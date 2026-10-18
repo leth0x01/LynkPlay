@@ -246,6 +246,10 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private var updateSavedUri: Uri? = null
     /** Runs the check of the public update copy; tests run it inline. */
     internal var updateInstallWorker: (Runnable) -> Unit = { Thread(it, "diplay-update-install").start() }
+    internal var silentUpdateInstaller: (File) -> Boolean = {
+        com.shilapi.xcertplay.update.AdbUpdateInstaller.install(applicationContext, it)
+    }
+    @Volatile private var updateInstallInProgress = false
     @Volatile private var updateStage = UpdateStage.IDLE
     @Volatile private var backupServer: SettingsBackupServer? = null
     @Volatile private var backupEndpoint: SettingsBackupEndpoint? = null
@@ -2745,6 +2749,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     }
 
     private fun installApk(file: File) {
+        if (updateInstallInProgress) return
+        updateInstallInProgress = true
         // The public copy lets file managers such as MT Manager open the APK. The private provider URI is the fallback,
         // including when the driver deleted the public copy.
         // The public copy is outside the app's control, so it must still match the verified file. Hashing two
@@ -2752,9 +2758,13 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         val savedUri = updateSavedUri
         val generation = updateGeneration
         updateInstallWorker(Runnable {
-            val publicUri = savedUri?.takeIf { sameContent(it, file) }
+            val installed = runCatching { silentUpdateInstaller(file) }.getOrDefault(false)
+            val publicUri = if (installed) null else savedUri?.takeIf { sameContent(it, file) }
             runOnUiThread {
-                if (generation == updateGeneration && !isFinishing && !isDestroyed) startInstaller(file, publicUri)
+                updateInstallInProgress = false
+                if (!installed && generation == updateGeneration && !isFinishing && !isDestroyed) {
+                    startInstaller(file, publicUri)
+                }
             }
         })
     }

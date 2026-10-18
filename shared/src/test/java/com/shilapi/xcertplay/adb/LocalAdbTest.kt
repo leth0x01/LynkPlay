@@ -111,6 +111,48 @@ class LocalAdbTest {
         adbd.join(1_000)
     }
 
+    @Test fun binaryStdinIsChunkedAndAcknowledgedBeforeNextPacket() {
+        val bytes = ByteArray(AdbPacket.MAX_PAYLOAD * 3 + 17) { it.toByte() }
+        val received = java.io.ByteArrayOutputStream()
+        val failure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+        ServerSocket(0).use { server ->
+            val worker = thread(isDaemon = true) {
+                try {
+                    server.accept().use { socket ->
+                        socket.soTimeout = 5000
+                        val input = socket.getInputStream()
+                        fun send(command: Int, local: Int, payload: ByteArray = byteArrayOf()) {
+                            socket.getOutputStream().write(AdbPacket(command, 77, local, payload).encode())
+                        }
+                        AdbPacket.read(input)
+                        send(AdbPacket.CNXN, AdbPacket.MAX_PAYLOAD)
+                        val open = AdbPacket.read(input)
+                        assertEquals("shell:pm install -r -S ${bytes.size}\u0000", String(open.payload))
+                        send(AdbPacket.OKAY, open.arg0)
+                        while (received.size() < bytes.size) {
+                            val packet = AdbPacket.read(input)
+                            assertEquals(AdbPacket.WRTE, packet.command)
+                            assertTrue(packet.payload.size <= AdbPacket.MAX_PAYLOAD)
+                            received.write(packet.payload)
+                            send(AdbPacket.OKAY, open.arg0)
+                        }
+                        send(AdbPacket.WRTE, open.arg0, "Success\n".toByteArray())
+                        assertEquals(AdbPacket.OKAY, AdbPacket.read(input).command)
+                        send(AdbPacket.CLSE, open.arg0)
+                        AdbPacket.read(input)
+                    }
+                } catch (error: Throwable) { failure.set(error) }
+            }
+            LocalAdb(key, port = server.localPort).use {
+                assertEquals("Success", it.shellStream("pm install -r -S ${bytes.size}", 5000, bytes.inputStream()))
+            }
+            worker.join(6000)
+            assertFalse(worker.isAlive)
+            failure.get()?.let { throw AssertionError(it) }
+            assertArrayEquals(bytes, received.toByteArray())
+        }
+    }
+
     private fun littleEndian(buffer: ByteBuffer, size: Int): BigInteger {
         val bytes = ByteArray(size).also { buffer.get(it) }
         return BigInteger(1, bytes.reversedArray())

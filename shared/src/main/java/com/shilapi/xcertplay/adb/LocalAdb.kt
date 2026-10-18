@@ -69,7 +69,14 @@ class LocalAdb(
 
     /** Same as [shell], pushing [stdin] to the command right after the stream opens; no EOF is implied. */
     @Synchronized
-    fun shell(command: String, readTimeoutMillis: Int, stdin: ByteArray?): String? {
+    fun shell(command: String, readTimeoutMillis: Int, stdin: ByteArray?): String? =
+        shellStream(command, readTimeoutMillis, stdin?.inputStream())
+
+    /** Streams binary stdin with ADB flow control. The command must know its size: no EOF is sent.
+     * The caller owns [stdin]; memory usage is bounded to one protocol packet.
+     */
+    @Synchronized
+    fun shellStream(command: String, readTimeoutMillis: Int, stdin: InputStream?): String? {
         if (cancelled.get()) return null
         if (socket?.isClosed != false && connect(mayAsk = false) != Access.READY) return null
         return try {
@@ -78,7 +85,8 @@ class LocalAdb(
             val local = nextStreamId++
             send(AdbPacket(AdbPacket.OPEN, local, 0, "shell:$command\u0000".toByteArray()))
             var remote = 0
-            var stdinSent = false
+            var stdinFinished = stdin == null
+            val buffer = ByteArray(AdbPacket.MAX_PAYLOAD)
             var finished = false
             val text = StringBuilder()
             while (!finished) {
@@ -86,9 +94,10 @@ class LocalAdb(
                 when {
                     packet.command == AdbPacket.OKAY && packet.arg1 == local -> {
                         remote = packet.arg0
-                        if (stdin != null && !stdinSent) {
-                            stdinSent = true
-                            send(AdbPacket(AdbPacket.WRTE, local, remote, stdin))
+                        if (!stdinFinished) {
+                            val count = stdin!!.read(buffer)
+                            if (count < 0) stdinFinished = true
+                            else if (count > 0) send(AdbPacket(AdbPacket.WRTE, local, remote, buffer.copyOf(count)))
                         }
                     }
                     packet.command == AdbPacket.WRTE && packet.arg1 == local -> {
