@@ -1,114 +1,145 @@
-# LynkPlay 领克 06 车测包
+# LynkPlay 领克 06 实车测试说明
 
-对象：2023 款领克 06 燃油版，Android 9。2026-10-13 实车反馈确认无线、有线 CarPlay 均能连接；2026-10-16 实车采集进一步确认仪表显示 CarPlay 地图、画面与声音正常、方控媒体键与语音键可用，见[验证记录](LYNKPLAY-VALIDATION.md) 的 2026-10-16 条目。
+适用车辆：2023 款领克 06 燃油版，BX11 / IHU514G / xecarx / Android 9。
 
-用户提供的车机信息：12.3 英寸、8:3 横屏、1920 × 720 分辨率、亿咖通 E02、6 GB 内存、64 GB 存储。
-
-## 三种构建
-
-| 类型 | 包名 | 签名 | 用途 |
-| --- | --- | --- | --- |
-| debug | `com.leth0x01.lynkplay.hudtest` | Android debug 签名 | 源码 CI、开发测试，默认没有认证素材 |
-| carTest | `com.leth0x01.lynkplay` | LynkPlay 长期签名 | 独立车测，必须提供有效配对的认证输入 |
-| release | `com.leth0x01.lynkplay` | 同一 LynkPlay 长期签名 | 后续正式版，同样要求认证输入 |
-
-当前 LynkPlay 版本为 `0.1.9-lynk06-test`，versionCode 47；DiPlay 基线为 0.2.19。与原版 DiPlay 共存。debug 与 carTest 是不同应用，设置不会自动迁移。
-
-## 应用弹窗样式
-
-热点配置、文字和数值输入、选择列表、确认提示及时间选择弹窗统一使用软件的深浅色配色、圆角边框和操作按钮。输入框随主题显示，操作按钮根据窗口宽度和文字长度切换横排或纵排，长内容保留底部操作区。热点名称及密码校验、密码显隐、保存和取消行为保持原有逻辑。
-
-0.1.8 的三指下滑菜单迁移上游玻璃面板布局：顶部固定标题与关闭按钮，底部固定“保存并重新连接”按钮，退出应用位于滚动列表末尾。菜单保留领克宽屏尺寸及系统栏、屏幕缺口的安全边距。关闭仍丢弃菜单草稿，“保存并重新连接”仍保存设置并重新连接。
-
-## 实车宽屏尺寸
-
-以实车 160 dpi 为依据：可用窗口宽度至少 1400 dp、高度至少 600 dp 时，三指菜单最大宽度为 1120 dp、应用弹窗最大宽度为 960 dp，按钮与输入框最低高度为 72 dp。菜单正文最低字号为 20 sp；弹窗正文为 20 sp、标题为 26 sp。窄窗和低高度窗口使用紧凑尺寸，所有宽度均限制在可用窗口内。
-
-应用自动匹配已采集的 `IHU514G` product / device / model、`xecarx` hardware 和 Android 9 标识组合，统一使用领克 06 燃油版配置；诊断报告记录匹配结果。
-
-## 领克仪表 CarPlay 地图（实验性）
-
-**实车结果（2026-10-16 更新）**：物理仪表已显示 CarPlay 地图。以下为已实现的接口与显示逻辑；模式回调、原车恢复与长时间稳定性仍在[验证记录](LYNKPLAY-VALIDATION.md) 的待办里。
-
-已接入采集到的 `DashboardMapDisplay`：仅在完整 IHU514G / xecarx / API 28 组合匹配，且显示有效、具有 Presentation 标记、尺寸为 1920 × 720 时选中该副屏。独立地图流默认请求 1920 × 720、30 fps、100% 比例，车标默认居中，使用通用地图边距；保留已保存的地图比例、内容和车标位置。
-
-覆盖安装后进入 **设置 → 高级 → 仪表盘上的 CarPlay 地图（实验性）**，打开开关；运行中确认“应用并重新连接”。随后在 iPhone CarPlay 中打开地图并启动导航，检查仪表是否显示地图、车标和路线是否位于可见区域。关闭同一开关并确认重新连接，会释放 LynkPlay 的仪表窗口和视频 Surface。
-
-0.1.6 使用独立工作线程连接本车 AdaptAPI，读取并监听仪表导航模式。CarPlay 的真实导航状态与转向提示分开管理；参考本车原车导航 APK，在导航进行和结束时分别发送 notifyNavigationStatus(1 / 0)。仅在接口可用、导航进行且模式为 FULL（3）时显示仪表窗口；简洁、未知模式或接口失败时隐藏窗口并保留解码 Surface。关闭开关或宿主退出时撤销本次发送的导航状态并释放回调。
-
-安装后先核对简洁模式，再尝试三指左划和仪表全景模式；切回简洁模式时导航应继续，退出导航时地图窗口应隐藏。本车接口调用权限、实际模式回调与简洁／全景操作的对应关系、投屏位置及原车恢复需要实车验证。三指左划日志中的 ECarXScreenProjectionService 与 MCU 投屏开关尚未直接调用；本版本不能据此宣称完成原车三指飞屏。诊断日志中检索“领克仪表”可查看接口连接、导航通知、模式及调用失败信息。
-
-## 仪表与方向盘补采
-
-专项采集 `lynk06_cluster_20261012_154433` 的第 1–14 阶段有完整前后标记，第 15 阶段起 ADB 离线。72 个采集文件的大小与 SHA256 已复核一致。新版脚本补采原车投屏、仪表附加服务与交互服务组件，并在断线时停止阶段推进。恢复 ADB 后执行：
-
-```powershell
-.\collect_lynk06_cluster.ps1 -StartPhase 15
-```
-
-已采过新版脚本的组件时，可加 `-SkipComponents` 跳过组件拉取。
-
-## USB VPN 授权修复
-
-当车机无法打开系统 VPN 授权界面时，App 在后台先通过 `su -c id -u` 确认自身取得 root，再执行针对当前包名的 `appops set … ACTIVATE_VPN allow`。root 命令等待上限为每次 15 秒。首次使用时，root 管理器可能要求允许 LynkPlay。
-
-root 命令完成后立即用 `VpnService.prepare()` 核实授权；系统未确认授权时，即使命令退出码为 0，也会尝试车主已经批准的本机 ADB，并再次验证。回到前台后再检查一次授权，仅在系统确认授权且仍为 USB 模式时继续连接。诊断日志记录 root 结果、ADB 状态、后台验证与最终授权结果。
-
-最新实车反馈已确认有线 CarPlay 能够连接。反馈未提供此次连接使用的授权路径；后续结合诊断报告核对 root／ADB 授权过程，并继续测试冷启动、插拔和覆盖升级后的连接。
-
-## 认证素材从哪里来
-
-[原版 README](https://github.com/shihabal3amri/DiPlay/blob/main/README.md) 说明：源码不包含认证素材，官方发布 APK 内置从公开 Carlinkit 固件恢复的实验性配件身份。它不是为 LynkPlay 新申请的 Apple MFi 认证；构建检查只能证明密钥与证书格式有效且配对，iPhone 是否接受仍需实测。
-
-本地输入取自[官方 v0.2.18 发布页](https://github.com/shihabal3amri/DiPlay/releases/tag/v0.2.18)，下载 APK 与 `SHA256SUMS.txt` 后，核对官方文件中的哈希：
+当前发布版为 **LynkPlay 0.2.4（versionCode 55）**。车测与正式版本使用同一个 `release` 包：
 
 ```text
-e241457b36b21fe75b06b5682b4dcfc4fbc25cf75b1855c7a4d055129635ce8e  DiPlay-0.2.18.apk
+com.leth0x01.lynkplay
 ```
 
-安装 [uv](https://docs.astral.sh/uv/) 后，在仓库根目录执行。该命令可直接用于 macOS、Windows PowerShell 和 Windows 命令提示符：
+2026-10-16 实车采集使用的是 0.2.3（54）；0.2.4 可以覆盖安装并保留应用设置和配对记录，但新增修复仍需按本文复验。
 
-```sh
-uv run scripts/import_diplay_authentication.py --apk-path .private/upstream-release/DiPlay-0.2.18.apk --expected-sha256 e241457b36b21fe75b06b5682b4dcfc4fbc25cf75b1855c7a4d055129635ce8e --source-url https://github.com/shihabal3amri/DiPlay/releases/download/v0.2.18/DiPlay-0.2.18.apk
-```
+## 已确认结果
 
-脚本只导入 `assets/offline-mfi/identity.pk8` 和 `certificate.p7b`，保存到 `.private/auth-assets/offline-mfi/`。来源记录为 `.private/auth-source.json`，不会打包进 APK。导入不会安装或执行原版 APK，不会覆盖已有不同身份。
+- 有线 CarPlay 连接成功，画面与声音正常。
+- 车型识别命中 `Lynk06PetrolAdapter`。
+- 物理仪表显示 CarPlay 路线。
+- 方向盘下一曲、上一曲、播放/暂停可用。
+- 方向盘语音键短按唤起 Siri。
+- 接听与挂断成功，电话由原车 HFP Client 处理。
+- 两次物理 USB 拔插均恢复画面与声音，用户估计约 13 秒。
+- 当前歌曲封面曾在固定歌曲对照中显示成功。
 
-认证私钥将随车测 APK 打包，接收 APK 的人可以提取它；APK 签名私钥不打包。素材与安装包均不提交到 Git。
+## 尚需复验
 
-## 初始化与备份签名
+- 0.2.4 中应用内断开后的 USB 重连。
+- 无线 CarPlay。
+- 语音键长按与 HiCar 的优先级。
+- 熄火后上电、退出重连和完整 USB 插拔循环。
+- 长时间仪表地图、导航结束后的原车恢复。
+- 仪表媒体中心封面的持续稳定性。
+- Siri 麦克风音质、通话后音乐与蓝牙恢复。
 
-先配置 `JAVA_HOME` 为 JDK 25，`ANDROID_HOME`（或 `ANDROID_SDK_ROOT`）为 Android SDK，然后执行：
+## 车机环境
 
-```sh
-uv run scripts/initialize_lynkplay_signing.py
-```
+| 项目 | 采集结果 |
+| --- | --- |
+| 车型 | 2023 款领克 06 燃油版 |
+| product / device | `IHU514G` / `IHU514G` |
+| model / hardware | `BX11` / `xecarx` |
+| Android | 9 / API 28 |
+| 系统版本 | `PQ2A.190405.003`，incremental `762` |
+| 物理屏幕 | 1920 × 720 / 160 dpi |
+| 应用可用区域 | 1800 × 720 / 160 dpi / 60 Hz |
+| 仪表显示 | `DashboardMapDisplay`，1920 × 720 / 30 Hz |
 
-生成 `.private/signing/lynkplay.p12` 和 `release-signing.properties`。**这两个文件必须一起安全备份**。此操作只生成本地文件，不替用户建立异地备份。重复运行保留现有签名；密钥丢失时应恢复备份，不能重新生成密钥覆盖旧安装。
+车型匹配要求完整组合一致，不以品牌名称或 Android 版本单独启用领克固件功能。
 
-本地配置保存证书 SHA256。构建和最终 APK 都会核对该指纹。原环境变量 `ANDROID_KEYSTORE_PATH`、`ANDROID_KEYSTORE_PASSWORD`、`ANDROID_KEY_ALIAS`、`ANDROID_KEY_PASSWORD` 优先于本地配置；使用外部签名时同时设置 `LYNKPLAY_SIGNER_SHA256`。
+## 安装与升级
 
-## 构建与检查
+从 [GitHub Releases](https://github.com/leth0x01/LynkPlay/releases) 下载当前版本的 `LynkPlay-<版本>.apk`。
 
-```sh
-uv run scripts/build_lynkplay_car_test.py
-```
+覆盖安装旧版 LynkPlay 可以保留设置和配对记录。安装前确认版本号高于车机现有版本；不要同时运行两款 CarPlay 应用控制 USB、媒体中心或仪表。
 
-也可通过 `--authentication-assets-directory` 指定另一目录。脚本运行 `:mobile:assembleCarTest`，核验 Android 9 APK 签名、长期证书指纹、正式包名及打包资产与选定输入完全一致。输出：
+首次打开后完成 Android 权限与连接设置。运行中的显示、音频或仪表设置如果提示重新连接，应使用界面的“应用并重新连接”，不要直接中断正在进行的导航。
 
-```text
-mobile/build/outputs/apk/carTest/mobile-carTest.apk
-mobile/build/outputs/apk/carTest/SHA256SUMS.txt
-```
+## 有线 CarPlay
 
-手动构建：设置 `DIPLAY_AUTH_ASSETS_DIR` 为认证根目录的绝对路径，执行 `:mobile:assembleCarTest`。缺失认证或配对不正确会失败。普通源码 CI 请清除该环境变量，避免把身份打包进 debug APK。
+1. 停车并保持 iPhone 解锁。
+2. 打开 LynkPlay，选择 USB 连接。
+3. 确认中控出现 CarPlay 画面并有声音。
+4. 播放音乐，测试暂停、恢复、上一曲和下一曲。
+5. 启动一条包含明确转向提示的路线。
+6. 结束导航并确认音乐与原车界面恢复。
 
-## 后续覆盖升级
+### 0.2.4 软件重连复验
 
-在 `gradle.properties` 同时递增 `lynkplayVersionCode` 和 `lynkplayVersionName`，当前为 47 和 `0.1.9`。更新检查按三段版本号比较，因此只改变 `-lynk06-test` 后缀不足以触发更新。
+0.2.3 在“应用内断开 → 再次选择 USB”时两次停在等待重新枚举；物理拔插后恢复。已发布的 v0.2.4 APK 会在等待超时后回退；当前 `lynkplay` 分支同步上游后改为 10 秒后重新发现同一 USB 节点并复核权限和配置。两种方案都尚未在本车通过复验，测试记录必须注明 APK 来源或提交。
 
-carTest 到 release 保持包名和签名不变，新版 versionCode 更高即可覆盖升级并保留数据。不要卸载旧版来绕过签名错误。正式发布流程见[构建与更新发布说明](BUILD.md#build-a-release-apk)。
+复验时：
 
-## 上车测试
+1. 正常连接并保持画面与声音。
+2. 在 LynkPlay 内主动断开。
+3. 不拔 USB，直接再次选择 USB 连接。
+4. 记录 APK 来源或提交、是否恢复、恢复时间，以及诊断中的重新发现、权限与配置阶段。
+5. 若仍失败，先导出诊断和 logcat，再使用物理拔插恢复；不能用拔插成功替代本步骤通过。
 
-停车后安装车测 APK，记录车机完整固件版本、iPhone 型号与 iOS 版本。依次检查连接、画面、音乐/导航、Siri 麦克风、电话及方向盘按键，出现异常时从诊断页导出报告。此包不能代表这些功能已经适配成功。
+## 仪表 CarPlay 地图（实验性）
+
+进入 **设置 → 高级 → 仪表盘上的 CarPlay 地图（实验性）**，开启后按提示重新连接。
+
+当前实现只选择名称为 `DashboardMapDisplay`、带 Presentation 标记、有效且尺寸为 1920 × 720 的非默认显示器。地图流默认 1920 × 720、30 fps、100% 比例。
+
+测试步骤：
+
+1. 开启地图设置并重新连接。
+2. 在 iPhone 地图中启动真实导航。
+3. 核对物理仪表地图、道路名称、转向、距离和车标位置。
+4. 操作上一曲、下一曲和暂停，确认地图不消失。
+5. 结束导航，确认 LynkPlay 窗口隐藏，原车导航可以再次使用。
+6. 导出诊断，确认路线帧、AdaptAPI、Presentation、Surface 和投影门控记录。
+
+显示器存在、`getNaviMode()`、`getShowPresentationOption()` 或应用 `mapVisible=true` 都不能单独替代物理仪表观察。
+
+## 方控、Siri 与电话
+
+- 媒体键应通过原车媒体中心回调控制 CarPlay。
+- 短按语音键应只打开一次 Siri；未连接或通话时应继续交给原车。
+- 长按测试需单独获得用户同意，并同时记录 HiCar、ADB 和 LynkPlay 行为。
+- 电话键由原车蓝牙电话处理；分别验证接听、挂断及通话后音乐恢复。
+- 音量键继续由车机系统处理。
+
+## 仪表媒体信息与封面
+
+进入原车仪表音乐区域，检查标题、歌手、专辑、播放状态、进度和封面。
+
+当前已有两组不同结果：
+
+- 固定歌曲对照中，当前 CarPlay 封面显示成功。
+- 后续综合采集中，下一曲、上一曲和暂停都成功，但三次都未显示封面；应用侧封面发布和 HTTP 读取正常。
+
+复验时应固定歌曲和播放源，只切换仪表地图开关，并分别记录：
+
+1. 当前歌曲列表版本。
+2. 播放信息中的封面状态。
+3. HTTP 读取结果。
+4. 原车封面广播与 DIM 日志。
+5. 物理仪表是否真正显示。
+
+## 无线与稳定性
+
+无线连接尚未在 2026-10-16 采集轮次复测。测试时分别记录使用的网络模式、首帧时间、声音、断开原因和恢复方式。
+
+建议停车完成：
+
+- 应用内退出重连 10 次。
+- 物理 USB 插拔 20 次。
+- 熄火后上电 5 次。
+- 一次至少 30 分钟的音乐与导航连续使用。
+- 前后台、倒车、电话、Siri 与原车蓝牙恢复。
+
+实际完成次数按真实结果记录；中断或跳过的轮次不计为通过。
+
+## 导出诊断
+
+异常发生后尽量先导出 LynkPlay 诊断报告，再执行恢复操作。报告中重点查看：
+
+- 连接阶段与 USB 重枚举。
+- 视频 Surface、帧率和恢复次数。
+- 领克仪表路线帧、AdaptAPI、投影门控和清理项。
+- 原车媒体中心回调、控制权、歌曲列表和封面读取。
+- 语音键、麦克风统计和蓝牙 Profile。
+- 电话音频路由。
+
+完整实车结论见[验证记录](LYNKPLAY-VALIDATION.md)，仪表实现见[系统仪表版本](LYNK06-CLUSTER-SYSTEM-BUILD-20261013.md)。

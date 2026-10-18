@@ -1,57 +1,94 @@
-# 领克 06 CarPlay 仪表音乐适配（2026-10-14）
+# 领克 06 CarPlay 仪表音乐适配
 
-## 范围与实车基线
+初始实现日期：2026-10-14。当前状态更新：2026-10-17。目标车为 2023 款领克 06 燃油版，BX11 / IHU514G / Android 9。
 
-目标车为 2023 款领克 06 燃油版，BX11 / IHU514G / Android 9。适配沿用该车 XSFMediaCenter 的 Binder 与 DIM 链路。
+## 当前状态
 
-此前用户确认的仪表封面、歌词、歌手来自原车音乐。CarPlay 上一首、下一首可用，播放键能开始播放但不能暂停。本次源码改动需要安装新构建后实车验收。
+LynkPlay 已通过本车 XSFMediaCenter 接入原车仪表音乐区域：
 
-> **2026-10-16 后续实车采集**：同一次会话里下一曲 / 上一曲 / 暂停都由原车媒体中心回调送达应用并转发
-> （`领克媒体中心：回调指令=4/5/2 control=true handled=true`，暂停后 `playing=false`），上面
-> “播放键能开始播放但不能暂停”的问题已不再出现；原车 `MusicPlaybackInfoHelper` 也把播放记为
-> `appName:LynkPlay`，`artwork` 为本应用发布的 URL——即 CarPlay 的标题/歌手确实已进入原车仪表媒体卡片。
-> 但仪表媒体中心的专辑封面仍不显示（原车对 null 封面 URL 抛 `MalformedURLException` 后回退默认），
-> 原因与待办见[验证记录](LYNKPLAY-VALIDATION.md) 2026-10-16 条目。
+- 下一曲、上一曲、播放和暂停均由原车媒体中心回调送达并转发到 CarPlay。
+- 标题、歌手、专辑、时长、播放状态和进度会发布到原车媒体中心。
+- 当前歌曲列表先于播放信息发布，为原车多封面路径提供当前歌曲封面。
+- 当前封面通过本机回环 HTTP 服务提供，原车已成功读取和解码过该图片。
+- 0.2.4 修正 `getMultiMediaList` 的空 Parcelable 返回编码，避免原车查询列表时按错误格式解析。
 
-## 已实现
+实车结论需要按时间区分：
 
-- 使用 `registerInMusic`（19）携带实际安装包名注册，保持令牌、控制权回调与播放信息中的包名一致。
-- 将来源列表、当前来源和播放信息中的来源统一为 `SOURCE_TYPE_ONLINE=6`，接入仪表“音乐”项目。
-- 处理 `IMusicClient.onSourceSelected`（8）及 `onMediaSelectedPlay`（21）。仅接受音乐来源和当前歌曲 UUID 或空 UUID；在 worker 上请求控制权、选择音乐来源、发布当前信息后发送 CarPlay PLAY。
-- `onSourceChanged`（17）是向全部客户端广播的来源/所属包通知，只更新控制门控，不触发播放或重新取得控制权。
-- 继续分别转发 PLAY、PAUSE、NEXT、PREVIOUS，保留明确播放和暂停的语义。会话关闭或失去媒体控制权后禁止转发。
-- 发布 iPhone NowPlaying 的标题、歌手、专辑、时长、进度和播放状态。原车的 `updateMusicPlaybackState` 返回未更新时保留连接，并继续同步进度。
-- 将已解码 CarPlay 封面压缩为最长边 512 像素的 JPEG，通过 `getArtwork`（16）的可选 Uri 编码返回。受限 FileProvider 只暴露封面缓存目录，逐文件授予 `ecarx.xsf.mediacenter` 读取权限。
-- 封面缓存最多保留三张；会话关闭时清理本会话文件与授权。排队切换封面期间，getter 只返回与当前封面相符的 Uri，合并未处理的信息更新。
-- 增加控制指令、音乐来源、播放信息更新结果及封面状态的中文诊断日志。
+1. **2026-10-15 单曲对照**：原车列表已替换为当前 CarPlay 歌曲，广播中的 `albumPath` 指向当前封面；用户确认“已显示正确封面”。
+2. **2026-10-16 综合采集**：下一曲、上一曲和暂停均成功，但用户三次都未看到仪表媒体中心封面；同一时段应用记录封面发布、HTTP 200 和播放信息更新成功。
 
-## 协议证据
+因此当前可确认“封面链路曾在实车成功”，但不能把一次成功扩展为长时间、多次切歌或所有音乐应用均稳定。
 
-原始资料位于 `.private/lynk06-media-handoff-20261014/`，派生分析位于 `.private/lynk06-media-analysis-20261014/`。
+## 协议接入
 
-1. `XSFMediaCenter.vdex` 中 `PlaybackState.SOURCE_TYPE_ONLINE=6`、`SOURCE_TYPE_LOCAL=0`。同车 `MediaInteractionImpl.updateMediaSourceTypeList` 将来源 6 转为 DIM 的音乐项目位 `0x10`，来源 0 无对应项目位。
-2. `MediaMainApiImpl.updateMusicPlaybackStateInner` 比较当前来源与信息来源；不相同且信息来源不为 -1 时，返回 false，并跳过后续 DIM 发布。现场日志反复记录当前来源 6、信息来源 0，与旧实现固定来源 0 相符。
-3. 同函数对 `MusicPlaybackInfoHolder.isEqual` 返回 true 的重复信息也返回 false。旧实现将所有 false 当成拒绝并注销，现已修正。
-4. `DimPlaybackInfo` 读取标题、歌手、专辑、时长、来源、状态和封面 Uri；`DimInteractionHelper` 经 `DimImageLoader` 的 Glide 图片加载器将封面缓存到原车 DIM 图片目录，再更新仪表。
-5. 原车 Stub 的回调编号及封面 Uri 编码已对照核对。Compact DEX 的派生宽度修正文件仅供分支阅读；quickened 方法及字段索引未恢复，不能将其中占位符当成真实符号。
-6. `MediaMainApiImpl.registerMusic`（1）传入空包名，`registerInMusic`（19）将传入包名直接写入 `ClientToken`。旧客户端的控制权门控按实际包名比较，新接口避免空包名身份与回调不匹配。
+- 使用 `registerInMusic`（transaction 19）携带实际安装包名注册，保持令牌、控制权回调和播放信息所属包一致。
+- 来源列表、当前来源、播放信息和歌曲列表统一使用 `SOURCE_TYPE_ONLINE=6`，对应仪表“音乐”入口。
+- `onSourceSelected` 和 `onMediaSelectedPlay` 只接受来源 6，并在 worker 上取得控制权、发布当前信息后发送 CarPlay PLAY。
+- `onSourceChanged` 仅更新来源与控制门控，不把广播通知误当成播放请求。
+- `onPlay`、`onPause`、`onNext`、`onPrevious` 分别保留明确语义，不把明确播放或暂停再次转换为切换指令。
+- 会话关闭、服务断开或失去媒体控制权后停止转发；iPhone 再次播放时可重新请求控制权。
 
-## 验证
+## 播放信息与进度
 
-专项测试覆盖来源一致性、选择后取得控制权再播放、其他来源/UUID 拒绝、明确四种媒体指令、控制权丢失和关闭门控、重复信息不注销、封面 Parcel 编码、封面读取、缩放、缓存上限、目录隔离和关闭清理。
+- 发布 iPhone Now Playing 的标题、歌手、专辑、时长、进度和播放状态。
+- iAP2 提供有效位置时记录单调时间基准；播放时外推、暂停时冻结，seek 和暂停后继续会重新校准。
+- 原车主动查询和每秒进度更新使用同一计算方式。
+- 来源切换、失去控制权、断开或关闭后停止定时任务。
+- 原车对重复播放信息返回未更新时保持连接，不将它误判为协议拒绝。
 
-最终完整 CI 通过（`BUILD SUCCESSFUL in 3m 14s`）：shared 1433 项（跳过 1 项）、common 1337 项、home 6 项，均无失败/错误。媒体专项 18 项通过；mobile、home、maphost 的 Lint 与 Debug 构建通过。公开源码检查通过，打包脚本测试 8 项通过。
+## 当前歌曲列表与封面
 
-首次 common 全量检查中 `SettingsBackupServerTest.aLargeReportArrivesWhole` 失败，后续全量通过；中间一轮 Lint 分析器在媒体测试文件上出现 `Unexpected owner function: null`，最终完整检查通过，未禁用 Lint。日志和专项 XML 保存在私有分析目录，最终结果见 `validation.txt` 与 `verified-ci.txt`。
+- 原车 IPKMode=2 的多封面路径优先读取 `updatePlaylist` 缓存，不能只更新 `IMusicPlaybackInfo.getArtwork()`。
+- LynkPlay 在持有控制权时先发布只包含当前已知歌曲的单项列表，再发布播放信息。
+- 列表项与播放信息使用相同 UUID；不编造上一首、下一首或未知队列。
+- 歌曲文字、时长或封面变化时更新列表；单纯进度和播放/暂停变化不重复发布列表。
+- 已解码封面压缩为最长边 512 像素的 JPEG，经仅绑定 `127.0.0.1` 的临时 HTTP 服务提供。
+- 服务使用会话内随机路径、限制读取范围和响应大小；会话结束后停止服务并清理缓存。
+- 封面尚未准备好时返回空，避免继续显示上一首封面；原车对空值处理不完整，会产生 `new URL("null")` 异常并回退默认图，因此诊断会记录 getter 空值翻转和累计次数。
 
-本机自动选择的 VS Code JRE 缺少 `jlink`，检查时临时绕过 Gradle daemon 自动选择并使用完整 Adoptium JDK 25；原 JVM 配置已恢复。
+## 诊断
 
-## 实车验收
+媒体诊断会关联：
 
-1. 使用包含配件认证的车测构建，核对实际安装 APK 哈希，记录本次 CarPlay 音频模式。
-2. 连接 CarPlay，在仪表选择“音乐”。检查歌名、歌手、专辑与封面是否对应 iPhone 当前歌曲。
-3. 检查播放、暂停、暂停后恢复、上一首、下一首；同步记录物理结果、按键时间、媒体中心回调和 iPhone 状态。
-4. 检查前后台控制、快速切歌及封面更新，切到原车其他媒体后再回到音乐。
-5. 检查通话、CarPlay 断开及原车音乐恢复后的仪表信息和方控。
+- 原车回调指令、来源、控制权和发送结果。
+- CarPlay 媒体按钮请求、HID 写入和五秒观察窗口。
+- 当前歌曲列表版本、封面引用、图片短编号和发布原因。
+- 封面 HTTP 登记、GET/HEAD、状态、响应字节和耗时。
+- 原车 `MusicPlaybackInfoHelper`、`ThreeAlbumService` 与 DIM 日志。
+- 当时的仪表地图状态版本、应用地图输出和最后一次原车投影指令。
 
-源码测试和编译结果用于验证本地实现，仪表实际显示与控制效果以新构建的实车结果为准。
+HTTP 200 只能证明图片已被读取，不能单独证明物理仪表完成渲染。
+
+## 已验证行为
+
+2026-10-16 的同一会话中：
+
+| 操作 | 原车回调 | 实车结果 |
+| --- | --- | --- |
+| 下一曲 | `回调指令=4 control=true handled=true` | 切歌成功，声音和地图正常 |
+| 上一曲 | `回调指令=5 control=true handled=true` | 切歌成功 |
+| 暂停 | `回调指令=2 control=true handled=true`，随后 `playing=false` | 暂停成功 |
+
+原车 `MusicPlaybackInfoHelper` 将播放记录为 `appName:LynkPlay`，封面字段为 LynkPlay 发布的回环 URL，说明 CarPlay 播放信息已经进入原车媒体链路。
+
+## 自动化验证
+
+现有回归覆盖：
+
+- 来源一致性、注册、控制权取得与丢失。
+- 四种明确媒体操作和关闭后的回调门控。
+- 来源选择、UUID 过滤和重复播放信息。
+- 当前歌曲列表字段、发布顺序和去重。
+- 封面缩放、保存、HTTP 读取、缓存上限和关闭清理。
+- 进度外推、seek、暂停继续、来源变化和迟到任务。
+- `getMultiMediaList` 空 Parcelable 的正确编码。
+
+## 后续实车复核
+
+1. 在当前 0.2.4 上提前开始采集，再进入仪表“音乐”，确认注册、控制权和首次发布顺序。
+2. 使用固定歌曲连续测试播放、暂停、上一曲和下一曲，并逐次记录封面是否切换。
+3. 只切换仪表地图开关，不改变歌曲和播放源，比较媒体中心封面。
+4. 测试快速切歌、前后台、切到原车其他媒体再返回、通话后恢复和断开重连。
+5. 单独观察进度条显示与 seek，不以日志中的进度更新代替物理界面确认。
+
+协议细节见[原厂媒体中心契约](LYNK06-MEDIACENTER-CONTRACT-20261017.md)，现场诊断见[原车仪表媒体诊断记录](LYNK06-MEDIA-DIAGNOSTICS-20261015.md)。

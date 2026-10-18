@@ -1,144 +1,107 @@
-# 领克 06 ECARX AdaptAPI 输入调查（2026-10-16）
+# 领克 06 ECARX AdaptAPI 输入调查
 
-**结论：不采用，相关代码已移除。** 本文是决策记录，保留证据，避免以后重复调查。
+调查日期：2026-10-16；契约复核更新：2026-10-17。
 
-目标车：2023 款领克 06 燃油版，BX11 / IHU514G / xecarx / Android 9。
-实车结论汇总见 [验证记录](LYNKPLAY-VALIDATION.md) 的 2026-10-16 条目。
+**结论：LynkPlay 不直接注册 AdaptAPI 输入拦截，相关试验代码已移除。** 目标车为 2023 款领克 06 燃油版，BX11 / IHU514G / xecarx / Android 9。
 
-曾实现过一个 `EcarxAdaptApiInputBackend`（反射调用
-`com.ecarx.xui.adaptapi.input.Input.requestKeysInterception`），依据是原厂 AppleCarPlay
-在 **SX11-A3 / IHU715P** 上这样用。实车（**BX11 / IHU514G**）验证后确认该机制在本车**不可用**，
-代码与测试已整体回退；生产代码回到引入前状态。
+10 月 17 日对 XSFInputService 的离线复核补齐了完整链路：原车输入服务本身通过 AdaptAPI 接收车辆按键，再把媒体键注入为标准 Android KeyEvent，交给 XSFMediaCenter。LynkPlay 应接原车媒体中心回调，而不是与系统输入服务竞争同一批按键。
 
----
+## 试验背景
 
-## 1. 反编译来源
+曾实现 `EcarxAdaptApiInputBackend`，反射调用：
 
-车机只读取回，离线反编译（vdex019 → CompactDex → 标准 dex → jadx）：
-
-```
-/system/framework/AdapterAPI.jar              classes.dex（741 类）
-/system/framework/AdapterAPIImpl.jar          仅 manifest，无代码
-/system/framework/arm64/boot-AdapterAPI.vdex      cdex001 → dex
-/system/framework/arm64/boot-AdapterAPIImpl.vdex  cdex001 → dex（252 类）
-/system/priv-app/XSFInputService/XSFInputService.apk
+```text
+com.ecarx.xui.adaptapi.input.Input.requestKeysInterception
 ```
 
-流水线：`vdexExtractor -i <vdex> -o out -f` → 得 `cdex001` → `Cdex2Dex`
-（dexlib2 HEAD `CDexBackedDexFile` + `DexFileFactory.writeDexFile`）→ `dex.039` → `jadx`。
+依据来自另一套 SX11-A3 / IHU715P 原厂 CarPlay。实车测试确认该方案不适合作为 BX11 上 LynkPlay 的输入后端，生产代码已恢复到引入前状态。
 
-## 2. 真实语义（`com.ecarx.xui.adaptapi.input.impl.InputImpl`）
+## 离线复核对象
+
+- `/system/framework/AdapterAPI.jar`
+- `/system/framework/arm64/boot-AdapterAPI.vdex`
+- `/system/framework/arm64/boot-AdapterAPIImpl.vdex`
+- `/system/priv-app/XSFInputService/XSFInputService.apk`
+
+CompactDex 转换后使用 JADX 核对 `InputImpl`、`KeyMapAdapterApi` 和 XSFInputService 的键码资源与动作类。未完整还原的方法不作为控制流结论。
+
+## `InputImpl` 的实际语义
 
 ```java
 ArrayMap<IKeyCallback, int[]> mCallbacks = new ArrayMap<>();
 
 public int[] requestKeysInterception(int[] keys, IKeyCallback callback) {
     mCallbacks.put(callback, keys);
-    int[] finalKeys = filterKeys(keys);          // filterKeys(keys){ return keys; }
-    mIm.requestKeysInterception(finalKeys, mKeyEventObserver);   // IInputManager
+    int[] finalKeys = filterKeys(keys); // 本车实现原样返回
+    mIm.requestKeysInterception(finalKeys, mKeyEventObserver);
     return finalKeys;
-}
-
-private void reportKeys(boolean down, int keyCode) {
-    int appCode = this.mKeyMap.getAppKey(keyCode);              // 原始码 → 应用码
-    for (IKeyCallback key : this.mCallbacks.keySet()) {
-        int[] value = this.mCallbacks.get(key);                 // ← ArrayMap.get
-        if (isValidKey(value, appCode) != -1) {
-            if (down) key.onKeyPressed(appCode); else key.onKeyReleased(appCode);
-        }
-    }
-}
-
-private int isValidKey(int[] keys, int keyCode) {
-    for (int i = 0; i < keys.length; i++) { ... }               // keys==null → NPE
 }
 ```
 
-三个必须记住的点：
+回调前，系统会先通过车机键码映射表将车辆原始码转换为 ECARX 应用码，再与每个回调注册的数组比较。
 
-1. **注册的是"应用码"**（ECARX `KeyCode.*` 命名空间），不是驱动原始码。
-   `reportKeys` 先用 `KeyMapAdapterApi.getAppKey()` 把原始码转成应用码，再与注册数组比对。
-2. **返回值不是"授权结果"**：`filterKeys` 原样返回入参，所以
-   `requestKeysInterception` 的返回值**恒等于请求数组**。用它判断"系统是否授权"是**假阳性**。
-3. **回调容器是 `ArrayMap`**：需要 key 的 `equals` 自反。用 `java.lang.reflect.Proxy`
-   实现 `IKeyCallback` 时，如果 `equals` 恒返回 `false`，`mCallbacks.get(proxy)` 恒为 `null`
-   → `isValidKey(null, code)` → `NullPointerException: Attempt to get length of null array`。
+需要保留的实现结论：
 
-> 首次实现的 NPE 就是这个原因（`equals -> false`），实车 logcat 中表现为
-> `at com.ecarx.xui.adaptapi.input.impl.InputImpl.isValidKey(InputImpl.java:192)`
-> 共 16 次。这个坑对所有"把 Proxy 放进哈希/ArrayMap 容器"的代码都成立。
+1. 注册参数是 ECARX 应用码，不是车辆驱动原始码。
+2. 本车 `filterKeys` 原样返回请求数组，因此返回数组不表示这些按键最终都会交给当前应用。
+3. 回调对象会作为 `ArrayMap` 的键；反射 Proxy 必须保证 `equals` 自反。试验版曾因 `equals` 恒为 false，使 `mCallbacks.get(proxy)` 返回 null，并在 `isValidKey` 中触发空指针。
 
-## 3. 原始码 → 应用码映射（`KeyMapAdapterApi.SystemKeyToApp`，节选有效项）
+## 原始码与应用码
 
 | 原始码 | 应用码 | 含义 |
 | --- | --- | --- |
-| 298 | 200231 | `KEYCODE_R_VOICE_ASSIST` |
-| 299 | 200005 | `KEYCODE_R_CALL` |
-| 300 / 301 / 302 | 200164 / 200024 / 200025 | MUTE / VOLUME_UP / VOLUME_DOWN |
-| 303 | 210004 | `KEYCODE_R_SRC` |
-| 304 / 305 | 200088 / 200087 | MEDIA_PREVIOUS / MEDIA_NEXT |
-| 286 / 287 | 24 / 25 | 音量 −/+ |
-| 326 / 330 / 308 / 307 / 348 | 5 / 91 / 3 / 119 / 119 | 其它 |
-| 314 / 315 / 333 / 349 / 350 | 110002 / 110001 / 110003 / 200400 / 200600 | 其它 |
+| 298 | 200231 | 方向盘语音助手 |
+| 299 | 200005 | 方向盘电话 |
+| 300 / 301 / 302 | 200164 / 200024 / 200025 | 静音 / 音量加 / 音量减 |
+| 303 | 210004 | 来源切换 |
+| 304 / 305 | 200088 / 200087 | 上一曲 / 下一曲 |
 
-**没有映射（注册了也永远不会命中）**：`200003`、`200004`、`200006`(ENDCALL)、`200085`(PLAY_PAUSE)、
-`210003`、`210005`、`210006`、`300001`~`300003`、`26`、`200082`、`210020`、`300020+`。
+XSFInputService 在 BX11 上选择 `e02_key_action` 资源表，并注册语音、电话、媒体、音量等应用码。原车系统服务注册这些码，不代表第三方并行注册会收到同样事件。
 
-## 4. 参照实现：`XSFInputService`（本车可正常工作）
+## 实车观察
 
-```java
-mInputApi.requestKeysInterception(this.KEYS, mCallback);   // KEYS 来自资源数组
+LynkPlay 试验后端所在进程的 `InputImpl` observer 日志只看到：
+
+| 原始码 | 应用码 | 观察次数 |
+| --- | --- | ---: |
+| 298 | 200231 语音键 | 8 |
+| 302 | 200025 音量减 | 56 |
+
+同一轮操作中的媒体键没有进入该试验回调，但原车媒体中心明确向 LynkPlay 发出：
+
+- 下一曲：`回调指令=4`
+- 上一曲：`回调指令=5`
+- 暂停：`回调指令=2`
+- 播放：`回调指令=1`
+
+所有已确认操作均要求 `control=true`、`handled=true`。
+
+## 与原车输入契约的交叉结论
+
+XSFInputService 的链路为：
+
+```text
+车辆按键
+  → android.car.input.service
+  → ECARX AdaptAPI Input
+  → XSFInputService KeyPolicy
+  → 媒体键注入标准 KeyEvent
+  → XSFMediaCenter
+  → LynkPlay IMusicClient
+  → CarPlay
 ```
 
-`KEYS` 按 `PcodeManager` 前缀选择；BX11 落到 `R.array.e02_key_action`（30 项）：
+语音键则由 XSFInputService 发送有序广播 `ecarx.intent.action.ECARX_KEY_RVOICEASSIST_EVENT`。LynkPlay 已通过 `Lynk06VoiceKeyReceiver` 使用该路径；再注册 AdaptAPI 语音码会形成重复入口。
 
-```
-200003, 3, 200004, 4, 210003, 200087, 200085, 200088,
-200231, 200025, 200164, 200024, 210004, 200005, 5, 300001,
-300002, 300003, 110001, 110003, 24, 25, 91, 200164,
-110002, 210005, 210006, 119, 200400, 26
-```
+电话键由 XSFInputService 发送原车电话广播，XCBTPhone3 根据 HFP 通话状态执行接听、拒接或挂断，LynkPlay 不接管。
 
-`index 8 = 200231`，与实车 logcat 的 `isValidKey keys[8]=200231=200231` 完全吻合。
-它注册了 `200087/200085/200088`，但**这些键在 BX11 上并不进 `IKeyEventObserver`**（见下）。
+## 最终决策
 
-## 5. 实车实际交付了什么（BX11）
+- **媒体键**：原车输入服务 → XSFMediaCenter → `Lynk06MediaCenter` → CarPlay。
+- **语音键**：ECARX 有序广播 → `Lynk06VoiceKeyReceiver` → Siri。
+- **电话键**：原车 XCBTPhone3 / Android HFP Client 处理。
+- **音量键**：继续由车机系统处理。
 
-对整段 logcat 统计 `InputImpl` 的 observer 事件，只出现两种原始码：
+自建 AdaptAPI 输入后端不会重新加入，除非未来固件采集证明存在当前两条路径无法覆盖、且不会产生重复动作的新按键。
 
-| 原始码 | → 应用码 | 次数 | 时间 |
-| --- | --- | --- | --- |
-| 298 | 200231 语音键 | 8 | 21:29:46 |
-| 302 | 200025 音量− | 56 | 21:32:53–54 |
-
-**媒体键（304/305）与接听键（299）一次都未出现。** 同一时间的媒体键由
-**原车媒体中心回调**送达（`领克媒体中心：回调指令=4/5/2/1 control=true handled=true`）。
-
-## 6. 结论
-
-1. AdaptAPI 在 BX11 上**无法覆盖媒体键**（被原车媒体中心先消费），因此替代不了现有媒体中心路径。
-2. 它能拿到的**语音键 200231** 已经由有序广播 `ecarx.intent.action.ECARX_KEY_RVOICEASSIST_EVENT`
-   → `Lynk06VoiceKeyReceiver` 处理；同时注册会造成**双触发 Siri**。
-3. 接听/挂断（299）在本次会话中从未经 AdaptAPI 到达；实车那次接听/挂断成功来自其它路径。
-4. `200085`、`200006` 是死码。
-
-**决定：移除该后端。** 车机上的按键继续走两条既有路径：
-
-- **媒体键** → 原车媒体中心回调 → `Lynk06MediaCenter` → CarPlay
-- **语音键** → ECARX 有序广播 → `Lynk06VoiceKeyReceiver` → Siri
-
-## 7. 复现命令
-
-```sh
-# 采集（只读）
-adb pull /system/framework/arm64/boot-AdapterAPI.vdex
-adb pull /system/framework/arm64/boot-AdapterAPIImpl.vdex
-adb pull /system/framework/AdapterAPI.jar
-adb pull /system/priv-app/XSFInputService/XSFInputService.apk
-
-# 反编译（VDEX 019 内为 CompactDex）
-vdexExtractor -i boot-AdapterAPIImpl.vdex -o out -f
-# cdex001 → 标准 dex：dexlib2 HEAD 的 CDexBackedDexFile + DexFileFactory.writeDexFile
-jadx -d src --no-res impl.dex                              # InputImpl / KeyMapAdapterApi
-aapt2 dump resources XSFInputService.apk | grep -A12 e02_key_action
-```
+完整按键分发见[原厂按键输入契约](LYNK06-INPUT-CONTRACT-20261017.md)，实车结果见[验证记录](LYNKPLAY-VALIDATION.md)。

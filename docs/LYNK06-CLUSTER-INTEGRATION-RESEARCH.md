@@ -1,90 +1,93 @@
-# 领克 06 原车仪表联动检索（2026-10-12）
+# 领克 06 原车仪表联动调研
 
-## 已核实的接口线索
+初始调研日期：2026-10-12。当前状态更新：2026-10-17。
 
-[百度 MapAuto 官方输出文档](https://vodp.baidu.com/docs/map/screen-output)明确要求仪表显示以 DashboardMapDisplay 名称暴露，并通过 DisplayManager 的 Presentation 分类查询；应用监听显示变化并建立 Presentation。与当前 0.1.5 的画面输出路径一致。此文档未给出本车原厂导航状态和手势契约。
+## 当前结论
 
-[GInputBridge](https://github.com/Salat39/GInputBridge)公开了亿咖通 AdaptAPI 接口桩。README 说明厂商模块用于编译链接，运行实现来自车机系统；不能将空实现直接当作可运行仪表联动代码。
+2023 款领克 06 燃油版使用 BX11 / IHU514G / xecarx / Android 9。仪表地图链路由三个部分组成：
 
-| 目标 | 源码中存在的方法 / 回调 | 来源 |
-| --- | --- | --- |
-| 导航状态 | notifyNavigationStatus、notifyTurnByTurnStarted、notifyTurnByTurnStopped、updateNaviStatus | [INaviInteraction.java](https://github.com/Salat39/GInputBridge/blob/main/adaptapi/src/main/java/com/ecarx/xui/adaptapi/diminteraction/INaviInteraction.java) |
-| 仪表导航模式 | getNaviMode、switchNaviMode、onChangeNaviMode | [IDimMenuInteraction.java](https://github.com/Salat39/GInputBridge/blob/main/adaptapi/src/main/java/com/ecarx/xui/adaptapi/diminteraction/IDimMenuInteraction.java) |
-| 投屏选项 | getShowPresentationOption、onShowPresentationOptionChanged、setPresentationToDimSwitch | [DimInteraction.java](https://github.com/Salat39/GInputBridge/blob/main/adaptapi/src/main/java/com/ecarx/xui/adaptapi/diminteraction/DimInteraction.java) |
+1. Android `DisplayManager` 暴露的 `DashboardMapDisplay`，用于承载 CarPlay 独立地图视频流。
+2. ECARX AdaptAPI 的 `DimInteraction`、`IDimMenuInteraction` 和 `INaviInteraction`，用于声明导航、投影来源、Turn-by-Turn 和路线卡片。
+3. 原车 Power / ScreenProjection 服务，负责车辆状态门控和 MCU 投影开关。
 
-这些签名为后续核对提供依据。setPresentationToDimSwitch 的四个参数语义、实车库版本及调用权限，尚未从本车固件确认。
+2026-10-16 用户已确认物理仪表显示 CarPlay 路线；该结果不再只是接口推测。应用诊断同时记录 `adapterConnected=true`、`mapVisible=true`、`streamActive=true`、38 个路线帧和 36 个有效帧。
 
-## 论坛与同平台项目
+## 车机与显示
 
-[HYWebview E01 作者帖子](https://lynkco.hyphp.cn/t/1892/2.html)介绍第三方地图仪表支持，并说明部分方式使用另外生成的导航路线。页面标注 E01，评论也有等待 E02 适配的反馈；该帖不能证明 2023 款领克 06 E02 的调用契约。
+| 项目 | 采集结果 |
+| --- | --- |
+| 设备 | product/device=`IHU514G`，model=`BX11`，hardware=`xecarx` |
+| 系统 | Android 9 / API 28，`SW0BX110520H8EHH.00762` |
+| 主屏 | 1920 × 720 / 160 dpi / 60 Hz |
+| 仪表显示 | `DashboardMapDisplay`，displayId 1，1920 × 720 / 213 dpi / 30 Hz |
+| AdaptAPI | 1.1.18.9 |
 
-[ecarx-e02-sideload README 的搜索缓存](https://github.com/ardentlab/ecarx-e02-sideload/blob/main/README.md)曾列出宝腾 S70 V333 的 Cast to Meter Panel。复核时 GitHub 仓库与 API 返回 404，可读取的 raw README 也未包含该指南，本轮未取得其飞屏源码。
+六个原车仪表阶段中，`DashboardMapDisplay` 始终存在，因此显示器存在不能作为地图模式或物理可见性的判据。
 
-## 与已有实车采集交叉核对
+## 已核实接口
 
-系统包清单存在 ecarx.xsf.gestureservice、ecarx.naviservice、com.autonavi.amapauto、com.ecarx.naviwidget 和 com.ecarx.eas.carservice。日志记录 AdaptBinderProvider 与 AdaptApplication 启动，同时有 EasPluginProvider 查询失败。系统服务清单存在 ecarx_interactive。这些是本车平台服务的定位线索，尚未证明上述接口可由 LynkPlay 调用。
+| 目标 | 接口 |
+| --- | --- |
+| 连接生命周期 | `DimInteraction.create`、`IConnectable` watcher、connect/disconnect |
+| 导航状态 | `notifyNavigationStatus`、`notifyTurnByTurnStarted`、`notifyTurnByTurnStopped` |
+| 路线信息 | `updateNavigationInfo` |
+| 仪表模式 | `getNaviMode`、`switchNaviMode`、`onChangeNaviMode` |
+| 投影来源 | `setPresentationToDimSwitch`、`getShowPresentationOption` |
+| 扩展模式 | `updateExtensionInfo(EXT_KEY_DIM_DISPLAY_MODE)` |
 
-## 后续核对
+原车导航进行和结束分别使用 `notifyNavigationStatus(1)` 与 `notifyNavigationStatus(0)`。原车导航还注册导航交互回调与顶层交互回调，并发布完整 `NavigationInfoToDim`。
 
-1. 从本车系统 SDK / JAR 和上述服务核对 DimInteraction、INaviInteraction、IDimMenuInteraction 的类、方法、参数和权限。
-2. 对比原车导航开始、结束、三指飞屏及仪表菜单切换时的日志，确定事件方向和显示模式。
-3. 确认后将 CarPlay 的真实导航状态通知仪表，并让应用的地图输出跟随原车显示模式；与本 App 的三指设置手势协调。
+## 原车操作与日志
 
-检索阶段仅记录接口线索；后续修改依据下述实车采集与原车 APK 核对结果。
+原车开始导航后先出现简洁箭头提示；三指向左划可请求地图投影，仪表菜单可切回简洁模式，退出导航结束显示。
 
+历史日志中，三指左划记录：
 
-## 专项采集入口
+- `ECarXScreenProjectionService.startScreenProjection start=true`
+- 随后 `INFO_ID_MMI_NAVSYNCDISPLAY open`
 
-脚本：`scripts/collect_lynk06_cluster.ps1`，Windows PowerShell 5.1 语法，UTF-8 BOM。放在 adb.exe 同目录，或用 `-AdbPath` 指定 adb 路径；多设备时用 `-Serial` 指定车机。
+原车 Power 服务会检查恢复出厂状态、导航是否启动、IHU 状态和 LCD 状态。收到 start 请求不等于 MCU 已执行 open，MCU open 也不等于物理像素回执。
 
-```powershell
-powershell -ExecutionPolicy Bypass -File .\collect_lynk06_cluster.ps1
-```
+实车地图显示和消失时 `getNaviMode()` 都曾为 1；`getShowPresentationOption()` 在本车实现中固定返回 0。因此当前实现不再用这两个 getter 决定应用地图窗口是否显示，只将它们作为诊断信息。
 
-执行前关闭 LynkPlay 的仪表地图开关。脚本先按提示记录原车未导航、开始导航后的简洁箭头提示、三指左划显示地图、仪表菜单切回简洁模式、仪表菜单切到地图模式、退出导航 6 个阶段，随后采集方向盘与媒体语音对照。每个阶段操作完成后按回车，可在同一次输入中补充现象备注。
+## 当前 LynkPlay 实现
 
-采集包括车机标识、系统服务与共享库、LynkPlay 权限信息、导航/手势/仪表组件 APK、厂商 JAR 与预编译代码文件、各阶段日志标记、全缓冲区日志、显示和窗口状态、中控截图。仪表画面需另用手机拍摄并标注对应阶段。
+- 只有完整匹配 IHU514G / BX11 / xecarx / API 28 时才初始化领克仪表链路。
+- 显示必须有效、带 Presentation 标记、名称和尺寸精确匹配，并排除主屏。
+- CarPlay 真实导航状态与路线提示分别管理；导航请求结束时先隐藏窗口，不等待厂商 Binder 清理。
+- 厂商调用运行在独立线程，连接失败按 1、2、4、8 秒退避；连续事务失败后重建连接。
+- 服务重连后重新取得菜单和导航接口、重新注册回调，并重新发布当前导航状态。
+- 导航开始时声明投影来源、发送状态 1、Turn-by-Turn 开始、请求地图模式，并发布完整路线卡片。
+- 路线卡片包含转向、下一提示距离、剩余距离、剩余秒数和道路名称；缺少真实数据时不编造卡片。
+- 完整卡片发送后尝试解除原车投影门控。
+- 导航结束发送状态为 0 的结束卡片、状态 0、Turn-by-Turn 停止并撤销投影声明。
+- 各清理项在调用前持久记录；崩溃或重连后先补偿清理，再接管新会话。
+- 应用窗口在 BX11 上同时控制 visibility 与 alpha，避免 Android 9 SurfaceView 图层残留。
 
-输出为脚本目录下的 `lynk06_cluster_时间戳` 和同名 ZIP，已加入 Git 忽略规则。文件用于核对 SDK 定义、参数含义、权限要求及原车事件顺序；运行时接口可用性还需后续应用探测。脚本已通过本机临时安装的 PowerShell 7.6.6 语法解析检查，Windows/车机执行结果待采集。
+## 诊断与证据分层
 
+应用报告分别记录：
 
-## 用户确认的原车操作流程
+- iPhone 导航请求与有效路线帧。
+- AdaptAPI 创建、连接、菜单/导航接口、回调和重连。
+- 应用 Presentation、窗口可见性、alpha、Surface 与视频流。
+- 原车投影门控、start/stop 请求与 MCU open/close。
+- 原车媒体封面和按键事件所处的地图状态版本。
 
-开始导航后，仪表呈现简洁箭头提示。中控原车地图中的三指向左划将仪表切换到地图；仪表菜单切回简洁模式后，导航继续。退出导航则结束导航显示。
+`appMapReady=true` 只表示应用输出条件齐备；物理仪表可见性仍需人工观察。2026-10-16 的“物理仪表显示 CarPlay 路线”来自用户确认，并有应用快照作为链路旁证。
 
-后续联动需要分别管理导航是否进行，以及仪表采用简洁或地图模式。三指左划与本 App 三指下滑设置菜单的方向分工需结合系统手势处理核对。
+## 采集脚本
 
+`scripts/collect_lynk06_cluster.ps1` 可分阶段采集原车导航、三指投影、仪表菜单、方向盘、媒体和语音日志。脚本支持从指定阶段继续，并在 ADB 离线时停止推进。
 
-## 同一轮补充方向盘、媒体与语音证据
+早期 `lynk06_cluster_20261012_154433` 在第 1–14 阶段有完整前后标记，第 15 阶段起 ADB 离线；后续结论同时使用 10 月 13 日仪表资料和 10 月 16 日 `lynk06-field` 只读采集，不把缺失阶段补写为已执行。
 
-已采集的系统包中存在 android.car.input.service、ecarx.xsf.inputservice、com.ecarx.multimedia、ecarx.xsf.mediacenter、com.tencent.wecarspeech、com.ecarx.btphone、com.ecarx.hmi 和 com.ecarx.systemui.plugin。专项脚本增加这些组件的 APK / 预编译文件和包信息。
+## 当前待验证
 
-共 22 个阶段：6 个原车仪表阶段，9 个原车音乐及方向盘阶段，7 个 CarPlay 对照阶段。按键包括上一曲、下一曲、暂停、播放、音量加减和语音键短按/约 2 秒长按。每个阶段记录输入设备事件、厂商服务日志、媒体会话、音频状态和语音服务；CarPlay 阶段在 shell 已取得 root 时额外读取应用会话日志。CarPlay 连接失败可在准备阶段输入“无法连接”，脚本跳过后续 CarPlay 按键阶段。
+- 0.2.4 导航开始、结束与原车恢复的完整闭环。
+- 简洁/地图菜单操作与当前实现回调的逐项对应。
+- 长时间导航、反复启停、倒车和前后台切换。
+- 熄火后上电及异常退出后的持久清理恢复。
+- 无线 CarPlay 下的仪表地图稳定性。
 
-输入事件采集使用 getevent，按已有 root 探测结果选择 root 或普通 shell，每个阶段远端最多运行 120 秒，完成后停止该阶段的本机采集进程。CAN 按键可能只出现在厂商回调中，核对时结合完整日志判断。
-
-用户另提供方向盘按键布局照片、电话/自定义键原有功能说明、仪表简洁/全景模式及菜单名称照片。语音键测试备注应区分唤醒 Siri 或原车语音，并记录音乐暂停、压低或继续播放的现象。
-
-用户在 Windows PowerShell 执行时遇到第 189 行解析错误。两处提示中的中文弯引号已改为「」；PowerShell 7.6.6 解析器复现修复前的 5 个错误，修复后整份脚本为 0 个解析错误。Windows 与车机采集运行待复核。
-
-## 2026-10-12 15:44 专项采集复核与代码接入
-
-采集第 1–14 阶段的完整日志均包含本阶段 BEFORE / AFTER 标记；第 15 阶段起日志为 ADB offline，后续部分出现指定设备找不到。72 个拉取文件的大小与 SHA256 全部一致。
-
-- 六个原车仪表阶段中，DashboardMapDisplay 均持续存在且为 1920×720 / 30 Hz，显示器存在不是仪表地图模式信号。
-- 三指左划阶段 15:53:50.005 记录 ECarXScreenProjectionService.startScreenProjection start=true；15:53:50.145 记录 INFO_ID_MMI_NAVSYNCDISPLAY open。菜单简洁／地图阶段存在原车 ThreeAlbumService Presentation 的 show／hide 变化，不能将这些日志直接视作 IDimMenuInteraction 的完整模式回调。
-- 本车 AdapterAPI.jar 中存在 DimInteraction.create(Context)、IConnectable 的连接与断开回调、getDimMenuInteraction、getNaviMode、onChangeNaviMode，以及 notifyNavigationStatus。SDK 版本为 1.1.18.9，FULL=3、SIMPLIFY=2、OFF=1。
-- 从本车 XSFNaviService APK 核对原车先连接 IConnectable，再取得导航接口；导航进行调用 notifyNavigationStatus(1)，结束调用 0。原车 setPresentationToDimSwitch 的调用为 (1, com.autonavi.amapauto, com.autonavi.amapauto, on)，其第三方接入权限与参数语义仍需实现代码复核。
-- 切歌／暂停／播放通过原车 MediaCenterClient 进入蓝牙 AVRCP；音量加减厂商键码为 301 / 302，语音短按为 298。第 14 阶段触发原车语音并发送蓝牙音乐暂停命令。
-
-0.1.6 新增 CarPlayNavigationStatus 与 Lynk06ClusterLink。领克链接仅在已确认的实车配置且仪表地图开关开启时初始化，厂商调用使用独立线程；读取／监听仪表模式，跟随真实导航状态显示或隐藏窗口。接口失败隐藏输出，关闭时撤销本次导航通知并释放菜单和连接回调。模式切换保留视频 Surface，不因此重连 CarPlay。
-
-原车投屏服务与 MCU 开关调用、权限和实车模式回调待核对。采集脚本增加 ecarx.power.service、com.neusoft.extraservice、com.ecarx.ecarxinteractiveservice，支持 -StartPhase 与 -SkipComponents；断线后停止推进、保留目录与 ZIP。
-
-## 运行时 ABI Probe 与文本 snapshot
-
-`Lynk06ClusterAbiProbe` 在仪表链接首次初始化时使用 `Class.forName(..., false, classLoader)` 读取六个仪表相关类的声明方法，排序后以 `领克仪表 ABI：` 前缀写入会话日志。Probe 不调用厂商方法。每个类与方法的反射异常单独记录，继续采集后续签名；链接初始化处再隔离整体异常，并在采集前标记已尝试，避免失败后反复采集或阻止仪表连接。仪表链接仍由已验证车型与仪表地图开关控制。
-
-在本车开启仪表地图并建立会话后，导出诊断报告，提取 `领克仪表 ABI：开始` 至 `领克仪表 ABI：结束` 的全部记录，去掉每行时间戳后保存为 UTF-8 文本。snapshot 应附实际固件号与 AdapterAPI 版本，重点核对 `create(Context)`、连接 watcher 注册／解除、连接／断开、菜单与导航接口获取、模式读取／回调注册／解除，以及 `notifyNavigationStatus(int)`。记录中的读取失败属于 ABI 验证异常，需先核对再判断兼容。
-
-测试桩验证反射采集流程、恢复状态机和生命周期；本次新增 Probe 的实车输出尚待采集。固件 ABI snapshot 以实车运行结果为准，厂商 JAR 保留在本地采集资料中。
+协议分发细节见[BX11 导航协议与访问边界离线复核](LYNK06-CLUSTER-OFFLINE-20261013.md)，显示判据见[领克仪表地图显示依据与诊断](LYNK06-MAP-VISIBILITY-DIAGNOSTICS-20261015.md)。

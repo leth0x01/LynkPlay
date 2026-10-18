@@ -1,67 +1,99 @@
 # 领克 06 方控、麦克风与蓝牙适配
 
-目标：2023 款领克 06 燃油版，IHU514G / xecarx / Android 9。厂商语音键与 MIC 末级回退仅在 product、device、model、hardware、API 28 完整匹配时启用。
+当前状态更新：2026-10-17。目标车为 2023 款领克 06 燃油版，IHU514G / BX11 / xecarx / Android 9。固件专属行为只在 product、device、model、hardware 和 API 28 完整匹配时启用。
 
-## 最新实车反馈与换电脑交接（2026-10-14）
+## 实车结论
 
-用户确认上一首、下一首已可用；播放键能触发 CarPlay 音乐播放，但不能暂停。仪表已显示封面、歌词和歌手。后续优先让原车媒体的“音乐”入口接到 CarPlay 并完成暂停，保留已可用的切歌与信息显示。现象、源码基线、实际安装包哈希、原车 APK/VDEX、日志与迁移步骤见[媒体方控开发交接](LYNK06-MEDIA-HANDOFF-20261014.md)。本轮只收集资料，未修复暂停。
+2026-10-16 已确认：
 
-## 实车依据
+- 下一曲、上一曲和播放/暂停可控制 CarPlay。
+- 短按方向盘语音键唤起 Siri。
+- 接听和挂断成功，电话状态由 Android HFP Client 记录。
+- 通话后下一曲仍可用。
+- 原车媒体中心回调是媒体键进入 LynkPlay 的实际路径。
 
-核对了 `lynk06_20261012_121852`、`lynk06_20261012_131000_wireless`、`lynk06_20261012_131105_menu` 和 `lynk06_cluster_20261012_154433`。
+仍待确认：语音键长按、App 未运行时的启动、Siri 实际录音质量、无线模式、通话后所有音频状态恢复及长时间稳定性。
 
-- XSFInputService APK 的 `ECarXRVoiceAssistAction` 使用有序广播 `ecarx.intent.action.ECARX_KEY_RVOICEASSIST_EVENT`。键码 extra 为 `ecarx.extra.ECARX_KEY_EVENT_TYPE=200231`；动作 extra 为 `ecarx.extra.ECARX_KEY_ACTION_TYPE`，短按 0、长按 1。广播携带 DEFAULT 类别及 INCLUDE_BACKGROUND。
-- 同 APK 的媒体键实现将方控转换为 Android 标准媒体 KeyEvent。现有实车原车音乐采集显示媒体中心将操作送往蓝牙 AVRCP。
-- 蓝牙状态采集显示 A2dpSinkService、HeadsetClientService 和 AvrcpControllerService 已连接。车机音频接收端 Profile ID 为 A2DP Sink 11、HFP Client 16。
-- 专项采集的 audio-state 记录 LynkPlay 曾启动 VOICE_COMMUNICATION 录音。该记录只证明录音启动，音量、语音质量仍需实际采样确认。
-- 用户确认原车短按打开领克智能语音，长按打开 HiCar；本次要求为 CarPlay 连接时短按 Siri，长按尝试打开 LynkPlay。
+## 按键分工
 
-## 实现行为
+### 媒体键
 
-语音键通过清单接收有序广播，优先级 999。CarPlay 会话活跃且未通话时，短按请求 Siri；成功后终止后续广播。未连接、连接建立中、通话中或 Siri 请求失败时继续原车处理。长按请求打开 LynkPlay 设置主界面，启动调用成功后终止后续广播。诊断报告包含最近一次事件及处理结果。
+原车链路：
 
-本车媒体中心 `ecarx.xsf.mediacenter.MediaCenterService` 通过音乐客户端回调控制 CarPlay。会话建立时注册客户端、声明标准媒体键和 DIM 能力、请求原车媒体控制权；明确播放、暂停、下一首、上一首分别发送 CarPlay PLAY、PAUSE、NEXT、PREVIOUS。iPhone 歌曲、播放状态和进度同步到媒体中心；退出会话时关闭回调并注销。失去原车媒体控制权后停止转发，iPhone 再次开始播放时尝试重新取得控制权。Binder 描述符、transaction 编号和参数类型来自本车 XSFMediaCenter VDEX。
+```text
+方控物理键
+  → XSFInputService
+  → 标准媒体 KeyEvent
+  → XSFMediaCenter
+  → LynkPlay IMusicClient
+  → CarPlay
+```
 
-CarPlay 窗口处理本车标准上一曲、下一曲、播放、暂停和播放/暂停事件：按下发送一次，重复与释放被消费。通话期间交给原车处理。原车蓝牙音频模式下，媒体操作交给 AVRCP，辅助 MediaSession 不申请媒体键焦点。音频模式随本次连接配置固定，修改设置后到重新连接才改变媒体控制路径。
+LynkPlay 分别转发 PLAY、PAUSE、NEXT、PREVIOUS，不把明确播放或暂停重新变成切换指令。只有会话有效、非通话且持有原车媒体控制权时才发送。
 
-Siri 的 VOICE_RECOGNITION 在创建、初始化或启动失败时尝试 VOICE_COMMUNICATION。本车在两个源均失败时再尝试标准 MIC。切换前释放失败录音器；不修改全车 AudioManager 模式。诊断记录每次失败阶段和实际录音源，包含扬声器通话使用 MIC 的情况。
+自建 AdaptAPI 输入后端已经移除。实车中该后端没有收到媒体键，而原车媒体中心已提供完整回调；并行监听语音码还会形成双触发入口。
 
-本车在连接配置生成时及 30 秒后检查 A2DP Sink / HFP Client。记录当前音频模式、连接设备数量、Profile 请求拒绝或异常，并释放 Profile 代理。
+### 语音键
 
-## 参考源码
+XSFInputService 发送有序广播：
 
-以下为本轮读取的版本；本车广播参数依据实车 APK 独立核对。
+```text
+ecarx.intent.action.ECARX_KEY_RVOICEASSIST_EVENT
+```
 
-| 仓库 | Commit | 核对内容 |
-| --- | --- | --- |
-| [LynkCo-DiPlay](https://github.com/soBigRice/LynkCo-DiPlay/tree/07075fdd9f52) | 07075fdd9f52 | Android 9 前台媒体键、蓝牙生命周期 |
-| [OsnPlay](https://github.com/xxxcrel/OsnPlay/tree/c55c361411e1) | c55c361411e1 | 独立录音源选择、Siri 录音源回退、吉利媒体键与 AVRCP 分工 |
-| [749001858/DiPlay](https://github.com/749001858/DiPlay/tree/4ed5514daf5c) | 4ed5514daf5c | MediaSession 和麦克风源实现 |
-| [Lynk-820A-Play](https://github.com/MrZhangWeiCe/Lynk-820A-Play/tree/b430fb6ef35e) | b430fb6ef35e | Android 9 前台媒体键、接收端蓝牙 Profile |
-| [DiPlay-Legacy-Android](https://github.com/trngish/DiPlay-Legacy-Android/tree/1c3bee25992b) | 1c3bee25992b | 旧 Android 媒体键及 AudioRecord 实现 |
-| [DiPlay-ECARX](https://github.com/jiopia/DiPlay-ECARX/tree/7f78343642fe) | 7f78343642fe | 亿咖通集成边界、标准麦克风回退 |
+- CarPlay 活跃且未通话时，短按请求 Siri；成功后终止后续广播。
+- 未连接、连接建立中、通话中或请求失败时继续原车处理。
+- 长按尝试打开 LynkPlay 设置主界面；该行为尚未完成实车验收。
 
-## 自动化验证（2026-10-13）
+2026-10-16 日志记录 `Lynk06VoiceKey: 动作=0；处理=true`，用户确认 Siri 出现。
 
-执行 AGENTS.md 要求的完整 CI 命令，最终 `BUILD SUCCESSFUL`：shared 1420 项（跳过 1 项）、common 1294 项、home 6 项，0 失败／错误。mobile、home、maphost 的 Lint 与 Debug 构建通过；`git diff --check` 通过。
+### 电话键
 
-新增覆盖语音键短按 Siri 成功／失败、未连接与连接建立中放行、通话放行、长按打开 LynkPlay、错误车型／键码／动作放行；领克前台播放/暂停只发送一次；蓝牙音频不申请媒体键焦点、不重复控制、设置待重连时保持原会话路径；Siri 录音启动失败释放与回退、领克 MIC 末级回退，以及蓝牙 Profile 选择。
+方向盘电话键由原车 XCBTPhone3 处理：来电时接听/拒接，拨出或通话中挂断。车机运行 Android HFP Client，LynkPlay 不监听电话键，也不接管通话控制。
 
-最终复核曾在已有 `SettingsBackupServerTest.stopDoesNotFailWhileConnectionsAreEnding` 卡住，线程栈停在 JDK 25.0.3 的 `ServerSocket.close()` / `UnixDispatcher.preClose0`。保留线程栈并终止该测试 worker，完整命令重跑后通过。
+### 音量键
 
-## 媒体方控实车证据（2026-10-13）
+音量加、音量减和静音继续由车机系统处理，LynkPlay 不拦截。
 
-用户在诊断版测试中断开 iPhone 与车机蓝牙后，方控无法控制音乐。`diplay-report 5.txt` 记录 MediaSession 已启用、音频焦点申请成功，但没有窗口或 MediaSession 媒体按键记录。
+## 媒体中心与蓝牙音频
 
-专项采集记录了 DIM → MediaCtrlByDimCallback → 蓝牙播放器 → AVRCP 的完整链路：`10-wheel-pause/logcat.txt` 的 15:59:38 为暂停，`11-wheel-play/logcat.txt` 的 16:01:59 为播放，`08-wheel-next/logcat.txt` 的 16:00:00 为下一首，`09-wheel-previous/logcat.txt` 的 16:00:29 为上一首。
+- CarPlay 音频模式：使用 XSFMediaCenter 回调和 CarPlay 媒体按钮。
+- 原车蓝牙音频模式：媒体控制交给 AVRCP，辅助 MediaSession 不申请媒体键焦点。
+- 音频模式在连接配置生成时固定，修改设置后到下一次连接才切换路径。
+- 会话建立时记录 A2DP Sink、HFP Client 和 AVRCP Controller 状态，并在 30 秒后再次检查。
 
-## 媒体中心客户端自动化验证（2026-10-13）
+2026-10-16 的采集显示车机存在 A2DP Sink、HFP Client 和 AVRCP Controller；有线 CarPlay 画面与声音正常。该结果不等于蓝牙音频模式已完成全部回归。
 
-完整 CI 命令通过：shared 1427 项（跳过 1 项）、common 1309 项、home 6 项，0 失败／错误；mobile、home、maphost 的 Lint 与 Debug 构建通过。媒体中心专项 10 项覆盖四种操作的转发、Binder 参数与返回值、iPhone 播放状态、能力声明、即时取得控制权、失去控制权、迟到请求、同步状态查询和退出后的回调门控。
+## Siri 麦克风
 
-## 实车复核
+录音源按以下顺序尝试：
 
-停车后验证 CarPlay 连接时短按只打开 Siri，长按打开 LynkPlay；未连接时短按仍打开领克语音。
-2026-10-16 实车采集已确认短按打开 Siri（`Lynk06VoiceKey: 动作=0；处理=true`）与方控媒体键；长按能否抢在原车 HiCar 接收者之前、以及 App 未运行时的启动，仍需实车确认广播顺序和车机启动限制。
+1. `VOICE_RECOGNITION`
+2. `VOICE_COMMUNICATION`
+3. 本车标准 `MIC` 末级回退
 
-分别在 CarPlay 音频、原车蓝牙音频模式下检查切歌、暂停/播放、前台和后台控制；测试 Siri 语音输入与电话后音乐恢复。导出诊断时关注“领克语音键”、`Car Bluetooth audio`、`Microphone: start`、`Microphone: failure` 和麦克风的 `peakDbfs` / `captureBytes` / `udpSent`。
+每次切换前释放失败的 AudioRecord，不修改全车 AudioManager 模式。诊断记录创建、初始化、启动失败阶段和最终使用的录音源，并包含 `peakDbfs`、采集字节与 UDP 发送统计。
+
+早期专项采集只证明 `VOICE_COMMUNICATION` 录音曾启动，不能证明音量、清晰度、回声或 Siri 识别质量。
+
+## 自动化覆盖
+
+现有测试覆盖：
+
+- 语音键短按成功/失败、未连接、连接中、通话中和错误车型放行。
+- 长按打开 LynkPlay 的调用路径。
+- 前台播放/暂停只发送一次，重复与释放被消费。
+- 原车媒体中心四种操作、控制权、来源变化、断开和迟到回调。
+- 蓝牙音频不重复控制、不申请媒体键焦点，设置变化等待重连。
+- 麦克风创建/初始化/启动失败后的释放和三级回退。
+- A2DP Sink / HFP Client Profile 选择和异常诊断。
+
+## 后续实车复核
+
+1. 短按语音键只触发一次 Siri，并确认原车语音不同时出现。
+2. 经用户同意测试长按，记录 HiCar、ADB 和 LynkPlay 的先后行为。
+3. 分别在 CarPlay 音频和原车蓝牙音频模式下测试前后台切歌、暂停和恢复。
+4. 测试 Siri 实际识别、电话接听/挂断及通话后音乐恢复。
+5. 导出诊断并核对录音源、`peakDbfs`、采集字节、UDP 发送和蓝牙 Profile 状态。
+
+输入分发细节见[原厂按键输入契约](LYNK06-INPUT-CONTRACT-20261017.md)，媒体协议见[原厂媒体中心契约](LYNK06-MEDIACENTER-CONTRACT-20261017.md)。

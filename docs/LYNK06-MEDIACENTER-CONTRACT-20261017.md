@@ -1,7 +1,10 @@
 # 领克 06 原厂媒体中心契约（XSFMediaCenter / Extraservice）
 
 > 调查日期：2026-10-17。记录领克 06（BX11 / IHU514G）原厂车机与 CarPlay 接收端（LynkPlay）之间的
-> 媒体交互契约。结论区分「已证实 / 推断 / 未知」，证据为反编译源码与 LynkPlay 仓库代码对照。
+> 媒体交互契约。结论区分「已证实 / 推断 / 未知」，证据为反编译源码、LynkPlay 仓库代码和实车日志对照。
+>
+> 当前状态：LynkPlay 0.2.4 已接入播放、暂停、切歌、播放信息、进度、当前歌曲列表和封面；
+> 2026-10-16 实车确认媒体控制可用。0.2.4 同时修正 `getMultiMediaList` 的空 Parcelable 编码，尚待实车回归。
 
 ## 1. 逆向对象与材料
 
@@ -99,7 +102,7 @@ descriptor：`ecarx.xsf.mediacenter.IMusicClient`
 | 26 | `onExit` | 退出 |
 | 27 | `selectListMediaPlay` | 从列表选择播放 |
 | 28 | `getContentList` | 返回内容列表（LynkPlay 返回空） |
-| 29 | `getMultiMediaList` | 返回多媒体列表（LynkPlay 返回 null） |
+| 29 | `getMultiMediaList` | 返回多媒体列表；LynkPlay 返回 null Parcelable，以 presence 标记 0 编码 |
 | 30 | `ctrlPlayMediaList` | 播放列表控制 |
 | 31 | `ctrlPauseMediaList` | 暂停列表控制 |
 | 32 | `ctrlCollect` | 收藏控制 |
@@ -150,13 +153,18 @@ descriptor：`ecarx.xsf.mediacenter.IMusicPlaybackInfo`
 
 ```
 方控物理键
-  → ECARX 按键广播（ecarx.intent.action.ECARX_KEY_SRC_EVENT / RSRC_EVENT / MODE_EVENT）
+  → android.car.input.service
+  → ECARX AdaptAPI Input
+  → XSFInputService KeyPolicy
+  → 标准媒体 KeyEvent（85 / 87 / 88）
   → XSFMediaCenter.MediaKeyReceiver
   → EventBus → MediaCtrlByKeyCallback
   → IMusicClient.onPlay/onPause/onNext/onPrevious（binder）
   → LynkPlay（Lynk06MusicClient.onTransact）
   → CarPlay HID
 ```
+
+10 月 17 日对 XSFInputService 的复核补齐了媒体键进入 XSFMediaCenter 之前的路径；LynkPlay 不直接注册 AdaptAPI 媒体键。
 
 ### 3.1 键码 → 原厂内部动作（`MediaKeyReceiver`）
 
@@ -243,16 +251,20 @@ InputStream inputStreamOpenStream = new URL((String) objArr[0]).openStream();
 同一隐患在 DIM 路径 `DimInteractionHelper.loadCoverFromNet()` 再次出现：
 `String.valueOf(dimPlaybackInfo.getArtwork())`，artwork 为 null 时同样得到 `"null"` 并尝试下载。
 
+LynkPlay 当前会在封面尚未准备好时返回空，避免继续挂着上一首图片；准备完成后发布当前歌曲列表和播放信息。2026-10-15 单曲对照中原车成功读取并显示当前封面，但 2026-10-16 综合采集的三次媒体操作仍未看到封面，因此该异常不能视为已经稳定解决。
+
 ## 6. 未定位的一环（未知）
 
 `com.neusoft.audio.AlbumShowBroadcast`（`Extraservice.IPKUtil.Action.audioAlbumShowAction`）是封面从
 中控媒体中心传到仪表 `AlbumService`/`ThreeAlbumService` 的中转广播，携带 `albumPath` / `prePath` /
-`nextPath` / `isShow` / `type`。其**发送者**已排除：12 个已采集组件 APK（含 XSFMediaCenter、
-XSFNaviService、XCMedia2）与 4 个框架 vdex（boot-ecarx / power / interactive / navi）均无
-`AlbumShowBroadcast` 字符串或 `audioAlbumShowAction` 发送点；大概率位于未采集的系统服务
-（如 AutoCarService）或某个 Neusoft 音频组件，需拉取对应 APK 才能定位。
-「开地图就没封面」（M4）的根因仍待实车对照采集：导航态下原车 `MusicPlaybackInfoHelper` 与
-`ThreeAlbumService` 均停止输出（见 LYNKPLAY-VALIDATION.md 2026-10-16 条目）。
+`nextPath` / `isShow` / `type`。现有采集尚未定位最终发送者。
+
+2026-10-15 的对照日志确认：调用 `updatePlaylist` 后，广播中的 `albumPath` 已替换为当前 CarPlay
+回环封面，用户确认显示正确。2026-10-16 的后续采集又出现三次无封面；其中应用发布和 HTTP 读取成功，
+但地图开启时段原车 `MusicPlaybackInfoHelper` 与 `ThreeAlbumService` 缺少对应输出。
+
+因此当前待确认的是原车后续广播与渲染在不同场景下为何不稳定，而不是再次证明 LynkPlay 能否生成图片。
+后续应在同一首歌、同一来源下只切换地图状态，并从连接前开始采集注册、列表、播放信息、广播和物理显示。
 
 ## 7. 关键常量
 
@@ -263,3 +275,12 @@ XSFNaviService、XCMedia2）与 4 个框架 vdex（boot-ecarx / power / interact
 | `IMusicPlaybackInfo` descriptor | `ecarx.xsf.mediacenter.IMusicPlaybackInfo` | 播放信息接口 |
 | `IMediaCenterSvc` descriptor | `ecarx.xsf.mediacenter.IMediaCenterSvc` | 原厂媒体中心服务 |
 | `declareWheelControl` 参数 | `int[]{0, 2}` | 0＝标准媒体键，2＝仪表 DIM 控制 |
+
+## 8. 0.2.4 协议修正与验证边界
+
+`IMusicClient.getMultiMediaList` 返回的是可空 Parcelable `IMediaLists`，不是 binder。空值必须先写
+presence 标记 0。旧实现误用 `writeStrongBinder(null)`，原车会把 flat-binder 魔数按 presence 整数读取，
+随后尝试从错误位置创建 Parcelable。0.2.4 已改为 `reply.writeInt(0)`，并增加 Binder 回归测试锁定格式。
+
+当前已实车确认播放、暂停、上一曲和下一曲；当前歌曲封面只在单次对照中确认成功，后续综合采集仍有缺失；
+进度数据已进入原车媒体链路，但物理进度条尚未单独验收。

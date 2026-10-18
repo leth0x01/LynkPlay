@@ -1,44 +1,80 @@
 # 领克仪表地图显示依据与诊断
 
-## 已确认的判断链路
+初始实现日期：2026-10-15。当前状态更新：2026-10-17。
+
+## 判断链路
 
 ### iPhone 导航请求
 
-`FceNavigationState` 从 iAP2 RouteGuidanceUpdate 中读取状态字段 `0x01` 和来源字段 `0x13`。状态为 1、3、4、5、6 时判为导航进行中；明确为空的来源会结束导航；尚未收到状态字段时，非空来源作为导航依据。`CarPlayNavigationStatus` 将变化传给 `Lynk06ClusterLink.setNavigation()`。
+`FceNavigationState` 从 iAP2 RouteGuidanceUpdate 读取状态字段 `0x01` 和来源字段 `0x13`。状态 1、3、4、5、6 表示导航进行；明确为空的来源会结束导航；尚未收到状态字段时，非空来源作为导航依据。`CarPlayNavigationStatus` 将变化传给 `Lynk06ClusterLink.setNavigation()`。
 
 ### 应用地图窗口
 
-`Lynk06ClusterState.showMap` 的计算为 `available && navigating`，没有使用 `getNaviMode()`。导航结束会先在主线程隐藏窗口，再由厂商接口 worker 清理导航声明。原车显示器常驻，不能用显示器是否存在判断地图。
+`Lynk06ClusterState.showMap` 使用 `available && navigating`，不使用 `getNaviMode()`。导航结束先在主线程隐藏窗口，再由厂商接口 worker 清理导航状态、Turn-by-Turn、路线卡片和投影声明。
 
-`ClusterMapPresentation.setMapVisible()` 在 BX11 上同时设置 decorView 的 VISIBLE/INVISIBLE 与窗口 alpha，避免 Android 9 的 SurfaceView 独立图层继续覆盖原车界面。窗口生命周期、Surface、视频流分别记录；`appMapReady` 仅表示应用窗口与输出条件齐备。
+`ClusterMapPresentation.setMapVisible()` 在 BX11 上同时设置 decorView 的 VISIBLE/INVISIBLE 与窗口 alpha，避免 Android 9 SurfaceView 独立图层继续覆盖原车界面。Presentation 生命周期、窗口、Surface 和视频流分别记录。
 
-`getNaviMode()` 在历史实车地图显示和消失时均出现过 1。已保存的本车 `DimInteractionImpl.getShowPresentationOption()` 方法直接返回 0。因此两个 getter 都不能单独作为物理仪表地图可见性的判据。
+`appMapReady=true` 只表示应用窗口与输出条件齐备，不表示物理仪表已显示。
+
+### 原车显示器与 getter
+
+`DashboardMapDisplay` 在未导航、简洁提示、地图模式和退出导航时都持续存在，不能用“显示器存在”判断地图。
+
+历史实车中地图显示和消失时 `getNaviMode()` 都出现过 1；本车 `getShowPresentationOption()` 返回 0。当前实现只记录这两个值，不以它们控制地图窗口。
 
 ### 原车投影门控
 
-本车 Power 服务 `ECarXScreenProjectionService.bM()` 的已核对分支：
+本车 `ECarXScreenProjectionService` 会在以下状态拒绝投影：
 
-- `isFactoryReset=true` 或 `isNaviNotStarted=true` 时拒绝投影。
-- 取得主机状态对象后，`ihuState=25` 或 `lcdState` 为 2、3、4、5 时拒绝；状态对象为空的分支返回允许。
-- `startScreenProjection(start)` 先检查上述门控；通过后，start=true 的分支向属性 `0x2870006c` 写入字节 1，并记录 `INFO_ID_MMI_NAVSYNCDISPLAY open`；start=false 分支写入字节 2，并记录 `close`。
-- 车辆信号连接情况 `mIsECarXSingalConnect` 在这条路径中有独立日志，诊断保留原值。
+- 恢复出厂流程进行中。
+- 原车认为导航尚未启动。
+- IHU 状态为 25。
+- LCD 状态为 2、3、4、5。
 
-原车门控拒绝日志、启动/停止请求和 MCU 写入记录分别保存。收到 start=true 不能直接当作 open；门控拒绝时也不能自行把最后的 MCU 开关记录改成 false。MCU 写入日志用于判断原车发出了什么指令，不等同于物理屏幕像素回执。
+允许后，start=true 会请求 MCU 属性 `0x2870006c` 写入 1，并记录 `INFO_ID_MMI_NAVSYNCDISPLAY open`；start=false 写入 2 并记录 close。
 
-## 自动诊断与媒体关联
+诊断分别保存门控判断、start/stop 请求和 MCU open/close。start 请求不等于 MCU open，MCU open 也不等于物理仪表像素回执。
 
-每次独立状态变化生成 `mapRevision`。封面登记/读取、原车歌曲与播放信息发布，以及 CarPlay 媒体请求/发送/手机状态记录，均附带显示状态版本和应用输出、最后 MCU 开关指令摘要。
+## 自动诊断
 
-显示诊断记录保留导航请求、接口可用性、应用窗口显示策略、菜单 getter 与回调原值、投屏选项 getter 与回调原值、窗口生命周期、可见性、alpha、显示器编号、Surface 有效性和流状态。回调原值在 getter 不变时也会记录。
+每次独立状态变化生成 `mapRevision`。以下事件都附带该版本及应用输出摘要：
 
-原车日志订阅加入 `ECarXPowerManagerService` 和 `ECarXScreenProjectionService`，从订阅开始时间读取，不把上一会话遗留的最后一行当成本次反馈。已核对的 Power 投影事件在原始日志限流前解析。重复的同状态事件更新时间，不重复刷状态变化日志。
+- 导航请求、路线卡片和有效帧统计。
+- AdaptAPI 创建、连接、菜单/导航接口、回调和重连。
+- 投影声明、模式请求、Turn-by-Turn 和结束清理。
+- Presentation、窗口可见性、alpha、displayId、Surface 和视频流。
+- 封面登记/读取、原车歌曲列表、播放信息与媒体按键。
+- 原车 Power 与 ScreenProjection 日志。
 
-报告保留原车事件时间、接收后的证据年龄、采集状态和日志缺口。新一轮采集清空旧原车投影结论；旧窗口或旧链路的迟到关闭记录不能覆盖新实例。尚未观测到的值保留为 null；物理屏幕可见性在报告字段里仍保留 unknown 语义，但 2026-10-16 的实车采集已由用户确认物理仪表显示 CarPlay 地图（见[验证记录](LYNKPLAY-VALIDATION.md)）。
+原车日志从本次订阅开始读取，不把上次会话最后一行当作当前状态。重复状态更新时间但不重复刷记录；新链路不会被旧窗口迟到的 close 覆盖。
 
-## 证据来源
+## 2026-10-16 实车结果
 
-- 项目：`shared/.../hud/FceClusterOutput.kt`、`CarPlayNavigationStatus.kt`；`common/.../Lynk06ClusterLink.kt`、`ClusterMapPresentation.kt`、`CarPlayHostActivity.kt`。
-- 本车离线 Power 反汇编：`.private/lynkplay-cluster-evidence-20261013/04-derived-disassembly/power-dexdump.txt`，bM 方法约第 16628 行、startScreenProjection 约第 16920 行。
-- 本轮仅恢复 quickened 指令宽度的派生文件：`.private/report8-analysis/power/power-widths-dexdump.txt`，bM 约第 15023 行、startScreenProjection 约第 15295 行。quickened 方法、实例字段的符号索引未恢复，不引用其中的占位符作为真实调用名。
-- 原车投屏选项 getter：`.private/lynkplay-cluster-contract-20261013-190825/boot-AdapterAPIImpl-remainder-dexdump.txt` 约第 26780 行，常量 0 后直接返回。
-- 历史原车日志：`.private/lynkplay-cluster-evidence-20261013/01-raw-logs/power-logcat.txt` 包含 naviNotStarted=true 后拒绝；`power-logcat-working.txt` 包含 naviNotStarted=false、ihuState=17、lcdState=0，以及后续 MCU open。属于 10 月 13 日的历史证据，不作为报告 8 当前会话的原车状态。
+应用报告记录：
+
+```text
+navigationActive=true
+routeGuidanceFrames=38
+validNavigationFrames=36
+adapterConnected=true
+menuAttached=true
+naviAttached=true
+presentationShowing=true
+mapVisible=true
+streamActive=true
+selectedCluster=1:DashboardMapDisplay
+```
+
+原车门控摘要为 `factoryReset=false`、`naviNotStarted=false`、`ihu=17`、`lcd=0`，并观察到 MCU open。用户确认物理仪表显示 CarPlay 路线，并在切换下一曲后地图继续正常。
+
+应用快照和 MCU 日志是链路证据；物理显示结论来自用户观察，二者不互相替代。
+
+## 当前待验证
+
+- 0.2.4 导航开始、结束和原车恢复的完整闭环。
+- 简洁/地图菜单操作对应的回调原值。
+- 长时间导航、反复启停、倒车和前后台切换。
+- 异常退出、服务重连和下次启动时的持久清理。
+- 无线 CarPlay 下的仪表显示稳定性。
+
+实车系统与实现总览见[系统仪表版本](LYNK06-CLUSTER-SYSTEM-BUILD-20261013.md)。
