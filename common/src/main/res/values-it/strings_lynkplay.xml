@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_lynk06_target">Lynk &amp; Co 06 del 2023 · Benzina · Android 9</string>
+    <string name="settings_lynk06_cluster_description">Prova a mostrare la navigazione CarPlay nell’area della mappa del quadro strumenti della Lynk 06. Durante la navigazione, la mappa viene mostrata quando l’interfaccia del quadro strumenti è disponibile. Applica e riconnetti per rendere effettive le modifiche.</string>
+    <string name="settings_vehicle_target_title">Veicolo previsto dalla configurazione</string>
+    <string name="settings_vehicle_target_unverified">È il veicolo previsto da questa build, non un firmware rilevato o verificato. Le funzioni del produttore non verificate restano disattivate.</string>
+    <string name="settings_vehicle_runtime">Sistema attuale: Android %1$s / API %2$d</string>
+    <string name="settings_oem_siri_key_description">Quando CarPlay è connesso, una pressione breve del tasto vocale originale del volante apre Siri, anche in background. Se disattivato, disconnesso, durante una chiamata o se Siri non è disponibile, il tasto mantiene la funzione vocale originale dell’auto. Le modifiche si applicano subito senza riconnettere. Una pressione prolungata apre ancora LynkPlay.</string>
+</resources>

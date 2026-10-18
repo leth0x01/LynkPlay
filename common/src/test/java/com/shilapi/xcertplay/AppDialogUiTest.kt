@@ -42,7 +42,9 @@ class AppDialogUiTest {
                 var saved: Triple<String, String, ManualHotspotSecurity>? = null
                 AirPlayPersistence.saveManualHotspotSsid(activity, "Lynk06")
                 AirPlayPersistence.saveManualHotspotPassphrase(activity, "12345678")
-                val callback: (String, String, ManualHotspotSecurity) -> Unit = { name, password, security ->
+                var savedInterface: String? = null
+                val callback: (String, String, ManualHotspotSecurity, String) -> Unit = { name, password, security, networkInterface ->
+                    savedInterface = networkInterface
                     saved = Triple(name, password, security)
                 }
                 activity.javaClass.declaredMethods.single { it.name == "askHotspotCredentials" }
@@ -50,10 +52,11 @@ class AppDialogUiTest {
                 val dialog = ShadowAlertDialog.getLatestAlertDialog()
                 try {
                     val inputs = descendants(dialog.window!!.decorView).filterIsInstance<EditText>()
-                    assertEquals(2, inputs.size)
+                    assertEquals(3, inputs.size)
+                    inputs[2].setText("eth0.3")
                     assertEquals(DiPlayPalette.of(night).primaryText, inputs.first().currentTextColor)
                     assertFalse(inputs.first().background is android.graphics.drawable.ColorDrawable)
-                    val password = inputs.last()
+                    val password = inputs[1]
                     val visibility = descendants(dialog.window!!.decorView).filterIsInstance<CheckBox>().single()
                     visibility.isChecked = true
                     assertNull(password.transformationMethod)
@@ -70,6 +73,7 @@ class AppDialogUiTest {
                     assertFalse(dialog.isShowing)
                     assertEquals("Lynk06", saved?.first)
                     assertEquals("12345678", saved?.second)
+                    assertEquals("eth0.3", savedInterface)
                 } finally { dialog.dismiss() }
             }
         }
@@ -136,7 +140,7 @@ class AppDialogUiTest {
                     assertEquals(1920, (activity.resources.configuration.screenWidthDp * activity.resources.displayMetrics.density).toInt())
                     assertEquals(720, (activity.resources.configuration.screenHeightDp * activity.resources.displayMetrics.density).toInt())
                 }
-                val callback: (String, String, ManualHotspotSecurity) -> Unit = { _, _, _ -> }
+                val callback: (String, String, ManualHotspotSecurity, String) -> Unit = { _, _, _, _ -> }
                 activity.javaClass.declaredMethods.single { it.name == "askHotspotCredentials" }
                     .apply { isAccessible = true }.invoke(activity, density == "mdpi" && width != 1800, callback)
                 val dialog = ShadowAlertDialog.getLatestAlertDialog()
@@ -158,7 +162,7 @@ class AppDialogUiTest {
 
     @Test fun wideHotspotDialogKeepsActionsInKeyboardSizedViewport() {
         withActivity(1800, "zh-rCN", "mdpi", true, height = 670) { activity ->
-            val callback: (String, String, ManualHotspotSecurity) -> Unit = { _, _, _ -> }
+            val callback: (String, String, ManualHotspotSecurity, String) -> Unit = { _, _, _, _ -> }
             activity.javaClass.declaredMethods.single { it.name == "askHotspotCredentials" }
                 .apply { isAccessible = true }.invoke(activity, false, callback)
             val dialog = ShadowAlertDialog.getLatestAlertDialog()

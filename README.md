@@ -2,7 +2,7 @@
 
 A [DiPlay](https://github.com/shihabal3amri/DiPlay) fork targeting the **2023 Lynk & Co 06 petrol model with an Android 9 head unit**. [中文说明](README.zh-CN.md).
 
-The current LynkPlay version is **0.2.4** (versionCode 55), incorporating DiPlay 0.2.20.
+The current LynkPlay version is **0.2.4** (versionCode 55). This branch now incorporates DiPlay 0.2.21; see the [upstream release notes](docs/RELEASE-NOTES-0.2.21.md).
 
 Vehicle feedback confirms that both wired and wireless CarPlay connect on the target head unit. In the previous build, steering-wheel music controls stopped working when car Bluetooth was disconnected. This version adds a client for the vehicle media center. A 2026-10-16 field capture on a 2023 Lynk 06 verifies the media controls, Siri on the voice key, the wired CarPlay map on the instrument cluster and USB replug recovery; see the [validation record](docs/LYNKPLAY-VALIDATION.md).
 
@@ -33,7 +33,7 @@ Continue vehicle testing for the audio anomaly, cluster map, connection stabilit
 
 ## Maintenance
 
-`main` follows upstream DiPlay; `lynkplay` carries this fork's changes. Initial baseline: `24ae1fa5` (DiPlay 0.2.18). Currently merged upstream baseline: `969f8714` (DiPlay 0.2.20). With a clean working tree:
+`main` follows upstream DiPlay; `lynkplay` carries this fork's changes. Initial baseline: `24ae1fa5` (DiPlay 0.2.18). Currently merged upstream baseline: `6d3b8a8c` (DiPlay 0.2.21). With a clean working tree:
 
 ```powershell
 git fetch upstream

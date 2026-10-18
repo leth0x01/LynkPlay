@@ -48,11 +48,14 @@
 | USB 插拔恢复 | 2 次均约 13 秒恢复画面与声音 | `stability-usb-01/02-*` |
 | OneOS 输入服务 | 本车不存在（预期） | `Geely input service: visible=false` |
 
-**本次修复（待复验）**
+**本次修复（待复验；下述为当时方案）**
 
 - 软件「断开 → 用 USB 连接」重连：实车 2/2 停在 `WaitingForReenumeration`，该阶段只有请求失败才有
   fallback、没有超时。新增 `ReenumerationWatchdog`（180 s，越过 `WiredSessionMemory` 记录的
   30–150 s USB 复位窗口），超时后重跑配置决策使用 iPhone 当前提供的配置。
+- 同步 DiPlay 0.2.21 时改用上游 `watchReenumeration`，移除上述 180 s watchdog：10 s 后重新发现
+  同一 USB 节点并检查权限和配置；设备已离开总线时继续等待接入事件，已有接入或更新重试会使旧检查失效。
+  该逻辑针对同一实车卡死现象；180 s 方案与新方案均不能据此宣称已通过领克实车复验。
 
 **仍未核实**
 
