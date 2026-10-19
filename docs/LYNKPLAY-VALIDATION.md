@@ -1,27 +1,135 @@
 # LynkPlay 验证记录
 
-## 2026-10-17：原厂 CarPlay 归属澄清（ThunderSoft，非 Neusoft）
+## 2026-10-19：CarPlay Ultra 协议可达性
 
-复核 2026-10-16 采集资料包（`.private/lynk06-field.zip`）里的只读证据，澄清领克 06 原厂 CarPlay 的
-真实实现，以及原厂逆向 `carplay.*` 键映射的适用范围。
+复核 iPhone 的 AirPlay `/info` 请求，三份独立采集（2026-10-16 两次、2026-10-19 一次）只声明三项仪表内容：
+
+```
+altScreenURLs=[maps:/car/instrumentcluster/map,
+               maps:/car/instrumentcluster/instructioncard,
+               maps:/car/instrumentcluster]
+```
+
+LynkPlay 已实现全部三项。iPhone 未声明车速表、转速表、挡位或警告灯的任何渲染入口，也没有 Ultra 专属字段；这与“地图铺满仪表背景、原车元素继续由车机绘制”的实测结果一致。
+
+`extendedFeatures` 中声明的 `vocoderInfo` 与 `enhancedRequestCarUI` 没有换来额外 UI 请求；iAP2 仅有三个电动车车辆端点，没有仪表布局通道。真 Ultra 需要 Apple 与车厂的双边授权，离线 MFi 实验身份不具备该渲染通道。
+
+结论与可推进方向见[CarPlay Ultra 协议可达性](LYNK06-CARPLAY-ULTRA-REACHABILITY.md)。
+
+## 2026-10-19：车辆只读探针首次实车运行
+
+在 2023 款领克 06（BX11 / IHU514G / xecarx / API 28）驻车状态用 Windows 离线 Runner 运行一次，采集器为 PowerShell 7.6.6，设备 `172.20.10.6:5555` 经 ADB 连接。覆盖安装平台签名包成功，服务启动成功，60 秒后按截止写终态 `completed`（reason=`deadline`）。
+
+**已核实**
+
+| 项 | 结果 |
+| --- | --- |
+| 六项读取 | 全部成功，各 59 次主动读取（60 秒、1 Hz），0 次错误、0 条 ERROR 状态 |
+| 里程 | `0x287000a3` = 430770 → 43077.0 km |
+| 续航 | `0x287000a4` = 625 → 625 km |
+| 车速 | `0x287000a8` = 0 → 0 km/h（驻车） |
+| 挡位 | `0x287000ec` = 5 → P |
+| 转速候选 | `0x2870023f` 在 60 秒内出现 33–363 多个原始值，仅记录原始数 |
+| 油量候选 | `0x28700207` 原始 92，未按百分比解释 |
+| 历史 | 256 条保留 + 98 条丢弃，合计 354 = 6 × 59，计数一致 |
+| 报告写入与拉回 | 49 次轮询拉取，最终按本次 request_id 校验后取回终态 |
+
+与 10 月 19 日早先采集的照片对比：里程由 43046 km 增至 43077 km，续航由 673 km 减至 625 km，挡位仍为 P，车速为 0，读数的量纲与变化方向一致。
+
+**本轮暴露的两点事实**
+
+- **属性订阅在此期间没有产生任何回调**：六项 `callbackCount` 均为 0，全部数据来自每秒主动读取。该固件的 `changeMode` 为按变化推送，驻车且数值不变时没有事件，符合预期；不能把“无回调”当成失联。
+- **源时间戳不同属性来自不同时钟域**：油量候选在整轮中固定为 `178727990547` ns，其余属性在 899–945 秒区间递增。因此源时间戳只能用于同字段单调性判断，不能跨字段比较，也没有据此推断缓存新鲜度。
+
+报告新增 `subscriptions` 段（每项 `propertyId` / `registered` / `callbacks`），用于区分“注册失败”与“注册成功但无回调”。
+
+随后用含该字段的构建再运行一次（`bb8e6dbd`，60.01 秒），六项均 `registered=true`、`callbacks=0`，里程仍 430770、续航由 625 降至 623、车速 0、挡位 P。因此在该固件的驻车、数值不变的条件下，订阅能注册但不下发事件；本次全部读数来自每秒主动读取。
+
+**动态验证（第三轮 `2f9b0d05`，`-SkipInstall`，60.00 秒）**
+
+乘员原地挪车时采集，六项全部读到，0 错误：
+
+| 阶段 | 挡位 | 车速 | 说明 |
+| --- | --- | --- | --- |
+| 0–4 s | R | 1.40 → 2.98 → 1.51 → 1.40 km/h | 倒车 |
+| 5–13 s | D | 0 → 2.75 → 4.95 → 5.90 → 3.43 km/h | 前进 |
+| 14–28 s | R | 0 → 2.75 → 3.48 → 2.30 → 0 km/h | 再次倒车 |
+| 29–42 s | P | 0 km/h | 停车 |
+
+- 挡位原始值与速度变化逐段对应：`4`=R、`2`=D、`5`=P，未出现未知值。
+- 车速 `×0.01 km/h` 的换算与场景一致，非零值共 19 次。
+- 转速候选在 R/D 挡处于 132–990、P 挡怠速为 0–231，随工况变化；仍未确定与仪表 r/min 的换算。
+- 油量候选由 92 降到 91；里程 430770（0.1 km 精度，本轮移动不足 0.1 km）；续航 622。
+- **订阅在数值持续变化时也没有下发任何事件**：六项 `registered=true`、`callbacks=0`。该固件下 CarPropertyManager 订阅不可依赖，1 Hz 主动读取是唯一有效来源。
+
+**仍未验证**
+
+- CarService 断连恢复，以及与会话 CarPlay 并行时的稳定性。
+- 高速、长时间行驶下的转速与油量换算。
+- 油量原始值是否为百分比（需加满油或记录已知油量对照）。
+
+本轮仅验证只读读取链路，未写入车辆属性、未接入仪表 UI、未涉及 CarPlay Ultra 协议。
+## 2026-10-19：车辆只读验证包（代码完成，待实车）
+
+新增独立的只读车辆信号探针，用于在 LynkPlay 自身进程和权限条件下取证，不接入仪表 UI、车辆控制或 CarPlay 上报。
+
+**实现**
+
+- 六项固定白名单，area 恒为 0：里程 `0x287000a3`、续航 `0x287000a4`、车速 `0x287000a8`、挡位 `0x287000ec`、转速候选 `0x2870023f`、油量候选 `0x28700207`。`0x287000b4` 是燃油类型，不在白名单。
+- 反射只读后端：先严格车型与 `android.car.permission.CAR_VENDOR_EXTENSION` 门禁，再枚举配置、读取并订阅。本车厂商属性没有 areaConfigs，OEM 返回空区域列表，按 area 0 放行。
+- 60 秒限时会话，进程级单 I/O 槽与租约；3 秒操作看门狗后使当前值失效并写终态。旧调用未返回时拒绝新会话，不新建线程或排队。重连代次隔离，迟到回调不能复活新值。
+- 报告写入 `Android/data/com.leth0x01.lynkplay/files/vehicle-probe/<uuid>.json`，AtomicFile、512 KiB 上限、最近 5 份；运行中或待清理的报告不会被拒绝报告淘汰。
+- Service `Lynk06VehicleProbeService` 仅 exported + `android.permission.DUMP`，无 intent-filter，`START_NOT_STICKY`，不自动启动。
+- Windows 离线 Runner 显式确认后覆盖安装、启动、拉回本次 UUID 的终态 JSON；START 已发出但未确认终态时，退出仍只对本次 UUID 尽力 STOP。
+
+**本机验证**
+
+- shared / common / home 单元测试、三个模块 lint 与 Debug 构建通过；脚本 29 项测试通过，其中 Windows 假 ADB 真实子进程流程 15 项。
+- 平台签名车测包重新构建并通过签名、包名、系统 UID 与认证素材校验。
+
+**待实车验证**
+
+- 应用进程内 `android.car` 类可见性、权限授予与后台 Service 启动；
+- 六项读数的单位、非零动态值与真实回调频率；
+- CarService 断连恢复，以及与会话 CarPlay 并行时的稳定性。
+
+本轮没有实车运行结果，不把上述待验项记为通过；也不涉及 CarPlay Ultra 协议接入。
+## 2026-10-19：离线采集、仪表读数对照与应用归属更正
+
+复核用户提交的 `lynk06_ultra_capture_20261019_132155_333.zip` 和两张物理仪表照片。
+ZIP CRC 与采集清单中的 313 条本地 SHA-256 全部通过；5 个目标应用目录、关键框架和 59 项传输均已取得。
+11 项警告来自部分 framework 目录不存在和 10 次进程 maps 权限拒绝，未发生 ADB 断连或传输超时。
+
+**已核实**
+
+- 实车 `CarService` 快照与日志中的里程 `43046.0 km`、续航 `673 km`、P 挡及零车速，与照片显示一致。
+- `com.thunder.carplay` 的应用资源名称为「雷石 KTV」／`Thunder Stone KTV`，Manifest 和代码对应歌曲、MV、麦克风及 KTV 播放功能。此前仅依据包名将它认定为原厂 Apple CarPlay 接收端，是错误判断；该 APK 不能作为 Apple CarPlay 协议实现的证据。
+- `SENSOR_TYPE_FUEL_LEVEL` 所映射的 `0x287000b4` 在车辆服务中名为 `INFO_ID_IPKFUEL_FUEL_TYPE`，当前值为 0；不能作为有效剩余油量。另有 `INFO_ID_REMAINING_OIL`（`0x28700207`）返回原始值 99，单位、缩放及有效性仍待对照验证。
+- 原厂空调应用使用 AdaptAPI `Car.create()`、`IConnectable` 和 `ICarFunction`；温度读取与设置明确使用 zone 1 表示左侧、zone 4 表示右侧。当前快照两侧温度原值均为 13，按该固件框架实现换算为 23.5；本轮未执行写入或控温验证。
+- 用户明确确认第二张照片的地图由 LynkPlay 投出，原车没有 Apple CarPlay 入口。LynkPlay 地图背景可铺满仪表可见背景，车速、转速、挡位、警告灯、媒体与驾驶辅助元素仍保留。这是实车投影结果，但没有证明这些原车叠层已能由 Android 应用独立控制，也不能据此宣称 CarPlay Ultra 已接通。
+
+本轮为资料完整性、静态实现和既有快照分析，不代表 LynkPlay 自身已完成车辆信号读取／订阅验证。
+
+## 2026-10-17：包名与运行时线索（应用归属结论已更正）
+
+当时复核了 2026-10-16 采集资料包（`.private/lynk06-field.zip`）中的包名和文件系统线索。
+其中将 `com.thunder.carplay` 识别为 Apple CarPlay 的判断，已由 2026-10-19 的 APK 分析证伪。
 
 **已核实**
 
 | 项 | 结果 | 证据 |
 | --- | --- | --- |
 | `com.neusoft.carplay` 存在性 | 不存在 | `ecarx.txt`：`dumpsys package` 的 dexopt/compiler 段均输出 `Unable to find package: com.neusoft.carplay`；`pm list packages` 仅见 `com.neusoft.extraservice/avmlogin/dvrlogin` |
-| 原厂 CarPlay 应用 | `com.thunder.carplay`（ThunderCarplay） | `packages.txt`：`/system/app/ThunderCarplay/ThunderCarplay.apk=com.thunder.carplay`；`ps -A`：`u0_a54 … com.thunder.carplay` |
+| 已安装的 Thunder 应用 | `com.thunder.carplay`（后续 APK 分析确认为雷石 KTV） | `packages.txt`：`/system/app/ThunderCarplay/ThunderCarplay.apk=com.thunder.carplay`；`ps -A`：`u0_a54 … com.thunder.carplay` |
 | Neusoft E02 运行时落点 | 领克 06 均不存在 | `/vendor/etc/CarPlay/`、`/etc/airplay.conf`、`/data/vendor/CarPlay/` 均 `No such file or directory`；`ps` 无 `vendor.alfusos.hardware.applecore@1.0-service`；`/dev/usb_iAP2` 与 `usbncm0` 均不存在 |
 | `carplay.*` 键 | 采集数据无任何实例 | `getprop`、应用诊断报告、全量文件 grep 均无 `carplay.*` |
 | MFi 芯片（i2c 地址 0x10） | 全车 12 条 I2C 总线无 0x10 驱动绑定设备 | `/sys/bus/i2c/devices`：`0-001a`/`2-0043`/`3-0008`/`4-002c`… 等，无 `*-0010` |
 
 **结论**
 
-- 领克 06（BX11/IHU514G）原厂 CarPlay 为 `com.thunder.carplay`（ThunderCarplay，已证实）；
-  「ThunderSoft / 中科创达」为按包名推断（`com.thunder.*`），未直接证实。
-- 原厂逆向建立的 `carplay.*` 键映射（pack `REVERSE_ENGINEERING_MAC.md` §2.3b）仅适用于
-  ECARX E02/Neusoft 原厂；领克 06 原厂的封面 / 地图 / MFi 机制应以 `com.thunder.carplay` 的 APK
-  为对象另行分析，不能套用该映射。
+- `com.thunder.carplay` 是雷石 KTV，不是 Apple CarPlay 接收端，也不能凭 `com.thunder.*` 推断为 ThunderSoft / 中科创达的 CarPlay 实现。
+- 资料包中逆向得到的 `carplay.*` 键映射（pack `REVERSE_ENGINEERING_MAC.md` §2.3b）属于
+  IHU715P / Neusoft 实现；本车的包名和文件系统线索不能证明可直接套用该映射。
 - MFi 芯片仍待探测：`/sys/bus/i2c/devices` 只列有驱动绑定的设备，E02 的裸 I2C `0x10` 芯片
   （ioctl 直访，无驱动）不会出现在 sysfs；需 `i2cdetect` 或 ioctl 探测才能定论（本轮采集只读，未探测）。
 

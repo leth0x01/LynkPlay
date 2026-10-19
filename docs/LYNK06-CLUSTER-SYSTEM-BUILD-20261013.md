@@ -20,7 +20,6 @@
 | AdaptAPI | 1.1.18.9 |
 | 原车导航服务 | `ecarx.naviservice` |
 | 原车地图 | `com.autonavi.amapauto` |
-| 原厂 CarPlay | `com.thunder.carplay`（ThunderCarplay） |
 
 2026-10-16 的 `dumpsys package` 显示 `com.leth0x01.lynkplay` 使用 `android.uid.system` 共享用户，实际 userId 为 1000。车型自动识别命中 `Lynk06PetrolAdapter`，条件为 product/device=`IHU514G`、model=`BX11` 或 `IHU514G`、hardware=`xecarx`、API 28 的完整组合。
 

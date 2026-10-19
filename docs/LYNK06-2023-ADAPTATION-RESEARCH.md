@@ -32,7 +32,6 @@
 | 应用可用区域 | 1800 × 720 / 160 dpi / 60 Hz |
 | 仪表显示 | `DashboardMapDisplay`，1920 × 720 / 30 Hz |
 | 原车导航 | `ecarx.naviservice` / `com.autonavi.amapauto` |
-| 原厂 CarPlay | `com.thunder.carplay` |
 
 车型匹配要求 product、device、model、hardware 和 API 等完整组合同时符合，不以品牌字段或 Android 版本单独启用固件专属行为。
 
