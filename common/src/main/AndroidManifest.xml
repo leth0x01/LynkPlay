@@ -2,6 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.car.permission.CAR_VENDOR_EXTENSION" tools:ignore="ProtectedPermissions" />
     <!-- 已获系统权限的车机自动采集原车媒体日志，普通安装只记录权限状态。 -->
     <uses-permission android:name="android.permission.READ_LOGS" tools:ignore="ProtectedPermissions" />
     <!-- Optional, user-authorized startup of the car's own hotspot. -->
@@ -38,6 +39,8 @@
         </intent>
     </queries>
     <application>
+        <service android:name="com.shilapi.xcertplay.Lynk06VehicleProbeService"
+            android:exported="true" android:permission="android.permission.DUMP" />
         <provider
             android:name="com.shilapi.xcertplay.CrashRecordInstaller"
             android:authorities="${applicationId}.crash-record"

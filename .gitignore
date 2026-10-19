@@ -57,3 +57,23 @@ _ecarx_investigation
 # 仪表专项采集结果可生成在脚本所在目录。
 lynk06_cluster_*/
 lynk06_cluster_*.zip
+
+# 离线 Ultra 调研采集结果包含原车应用和日志，只保存在本地。
+lynk06_ultra_capture_*/
+lynk06_ultra_capture_*.zip
+
+# 车辆只读探针的本机结果目录。
+vehicle-probe-results/
+
+# 本地离线采集与探针工具，不进入版本库。
+/scripts/collect_lynk06_*.ps1
+/scripts/collect_lynk06_*.cmd
+/scripts/run_lynk06_vehicle_probe.ps1
+/scripts/run_lynk06_vehicle_probe.cmd
+/scripts/LYNK06-ULTRA-COLLECT.zh-CN.md
+/scripts/tests/test_ultra_collector.py
+/scripts/tests/test_vehicle_probe_runner.py
+/scripts/tests/ultra_collector_checks.ps1
+/scripts/tests/vehicle_probe_runner_checks.ps1
+/docs/LYNK06-VEHICLE-PROBE.md
+/docs/plans/2026-10-19-lynk06-offline-collection.md
