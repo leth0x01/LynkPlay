@@ -35,7 +35,7 @@ class UpdateInstallCompatibilityTest {
     private fun install(publicUriReadable: Boolean, installers: Int, publicBytes: ByteArray = byteArrayOf(1)): Intent {
         val activity = Robolectric.buildActivity(DiPlayActivity::class.java).get()
         activity.updateInstallWorker = { it.run() }
-        activity.silentUpdateInstaller = { false }
+        activity.updateInstallerUid = { 10_000 }
         val apk = File(activity.cacheDir, "update/test/DiPlay.apk").apply {
             parentFile!!.mkdirs()
             writeBytes(byteArrayOf(1))
@@ -53,22 +53,6 @@ class UpdateInstallCompatibilityTest {
         }
         DiPlayActivity::class.java.getDeclaredMethod("installUpdate").apply { isAccessible = true }.invoke(activity)
         return shadowOf(activity).nextStartedActivity
-    }
-
-    @Test fun successfulSilentInstallUsesPrivateFileAndDoesNotOpenInstaller() {
-        val activity = Robolectric.buildActivity(DiPlayActivity::class.java).get()
-        activity.updateInstallWorker = { it.run() }
-        val apk = File(activity.cacheDir, "verified.apk").apply { writeBytes(byteArrayOf(1)) }
-        var calls = 0
-        activity.silentUpdateInstaller = {
-            assertEquals(apk, it)
-            calls++
-            true
-        }
-        DiPlayActivity::class.java.getDeclaredField("updateFile").apply { isAccessible = true }.set(activity, apk)
-        DiPlayActivity::class.java.getDeclaredMethod("installUpdate").apply { isAccessible = true }.invoke(activity)
-        assertEquals(1, calls)
-        org.junit.Assert.assertNull(shadowOf(activity).nextStartedActivity)
     }
 
     @Test fun severalInstallersAskTheDriver() {

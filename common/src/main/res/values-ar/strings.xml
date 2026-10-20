@@ -709,6 +709,9 @@
     <string name="update_downloading">جارٍ التنزيل · %1$d%%</string>
     <string name="update_verifying">جارٍ التحقق…</string>
     <string name="update_install">تثبيت %1$s</string>
+    <string name="update_install_warning">سيُغلق LynkPlay وينقطع اتصال CarPlay أثناء التثبيت. أعد فتح التطبيق بعد اكتمال التحديث.</string>
+    <string name="update_install_continue">متابعة التثبيت</string>
+    <string name="update_installing">جارٍ تثبيت التحديث… أكّد أي مطالبة من النظام. سيُغلق التطبيق أثناء التثبيت.</string>
     <string name="update_failed">فشل التحديث</string>
     <string name="update_available_home">يتوفر تحديث</string>
     <string name="update_saved_to">تم الحفظ في %1$s</string>

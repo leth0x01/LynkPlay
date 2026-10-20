@@ -46,6 +46,8 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.shilapi.xcertplay.update.SessionInstallState
+import com.shilapi.xcertplay.update.SessionUpdateInstaller
 import com.shilapi.xcertplay.adb.LocalAdb
 import com.shilapi.xcertplay.airplay.CarPlayClusterDisplay
 import com.shilapi.xcertplay.airplay.CarPlayDisplayScale
@@ -246,9 +248,12 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private var updateSavedUri: Uri? = null
     /** Runs the check of the public update copy; tests run it inline. */
     internal var updateInstallWorker: (Runnable) -> Unit = { Thread(it, "diplay-update-install").start() }
-    internal var silentUpdateInstaller: (File) -> Boolean = {
-        com.shilapi.xcertplay.update.AdbUpdateInstaller.install(applicationContext, it)
+    internal var updateInstallerUid: () -> Int = { android.os.Process.myUid() }
+    internal var sessionUpdateInstaller: (File) -> Boolean = {
+        SessionUpdateInstaller.install(applicationContext, it)
     }
+    private var observedInstallState: SessionInstallState.State? = null
+    private var updateConfirmationDialog: AlertDialog? = null
     @Volatile private var updateInstallInProgress = false
     @Volatile private var updateStage = UpdateStage.IDLE
     @Volatile private var backupServer: SettingsBackupServer? = null
@@ -305,7 +310,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         connect(notificationTransport)
     }
     private val tick = object : Runnable {
-        override fun run() { refreshStatus(); handler.postDelayed(this, 1000) }
+        override fun run() { refreshInstallState(); refreshStatus(); handler.postDelayed(this, 1000) }
     }
     private val appearancePoll = object : Runnable {
         override fun run() {
@@ -530,6 +535,13 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             recreate()
             return
         }
+        // PackageInstaller binder queries and durable writes must stay off the UI thread.
+        Thread({
+            runCatching { SessionInstallState.reconcile(applicationContext) }
+                .onFailure { Log.w("DiPlay-Update", "session reconciliation failed", it) }
+            runOnUiThread { if (!isFinishing && !isDestroyed) refreshInstallState() }
+        }, "diplay-update-reconcile").start()
+        refreshInstallState()
         handler.removeCallbacks(tick); handler.post(tick)
         // Back with the hotspot access now allowed: the start-up attempt that lacked it runs again.
         if (hotspotStartupResult == CarHotspotTethering.Result.PERMISSION_REQUIRED && CarHotspotTethering.permitted(this)) {
@@ -563,6 +575,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     }
 
     override fun onDestroy() {
+        updateConfirmationDialog?.dismiss()
+        updateConfirmationDialog = null
         settingsSearchPopup?.dismiss()
         appearanceObserverRemoval?.invoke()
         appearanceObserverRemoval = null
@@ -2608,6 +2622,25 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private fun updateRow(): View {
         val container = column().apply { setPadding(0, dp(12), 0, 0) }
         updateMessage?.let { container.addView(label(it, 14, MUTED)) }
+        val session = SessionInstallState.read(this)
+        if (updateInstallInProgress || session?.pending == true) {
+            container.addView(label(getString(R.string.update_installing), 14, MUTED))
+            if (session?.pending == true) {
+                // A confirmation launched from a background receiver may have been suppressed.
+                if (session.confirmationAvailable) container.addView(
+                    button(getString(R.string.update_install, updateRelease?.tagName.orEmpty()).trim(), true) {
+                        SessionUpdateInstaller.confirmPending(this)
+                    }, matchButton(SETTINGS_BLOCK_GAP_DP, 60))
+                // Also recovers a session left uncommitted by a killed process during APK copying.
+                container.addView(button(getString(R.string.common_cancel), false) {
+                    Thread({
+                        SessionUpdateInstaller.cancelPending(applicationContext)
+                        runOnUiThread { if (!isFinishing && !isDestroyed) refreshInstallState() }
+                    }, "diplay-update-cancel").start()
+                }, matchButton(SETTINGS_BLOCK_GAP_DP, 60))
+            }
+            return container
+        }
         when (updateStage) {
             UpdateStage.IDLE, UpdateStage.FAILED ->
                 container.addView(button(getString(R.string.update_check), false) { checkForUpdates() },
@@ -2620,7 +2653,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             UpdateStage.VERIFYING -> container.addView(label(getString(R.string.update_verifying), 14, MUTED))
             UpdateStage.READY -> {
                 container.addView(
-                    button(getString(R.string.update_install, updateRelease?.tagName.orEmpty()), true) { installUpdate() },
+                    button(getString(R.string.update_install, updateRelease?.tagName.orEmpty()), true) { confirmUpdateInstallation() },
                     matchButton(10, 60))
                 updateSavedPath?.let { container.addView(label(getString(R.string.update_saved_to, it), 13, MUTED).apply { setPadding(0, dp(10), 0, 0) }) }
             }
@@ -2742,15 +2775,51 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         }, "diplay-update-download").start()
     }
 
+    private fun confirmUpdateInstallation() {
+        val file = updateFile ?: return
+        if (updateConfirmationDialog?.isShowing == true || updateInstallInProgress ||
+            SessionInstallState.read(this)?.pending == true) return
+        val generation = updateGeneration
+        val dialog = appDialogBuilder()
+            .setTitle(getString(R.string.update_install, updateRelease?.tagName.orEmpty()).trim())
+            .setMessage(R.string.update_install_warning)
+            .setNegativeButton(R.string.common_cancel, null)
+            .setPositiveButton(R.string.update_install_continue) { _, _ ->
+                // Do not install a different download if the update selection changed meanwhile.
+                if (generation == updateGeneration && file == updateFile && !isFinishing && !isDestroyed) {
+                    installUpdate()
+                }
+            }.create()
+        updateConfirmationDialog = dialog
+        dialog.setOnDismissListener { if (updateConfirmationDialog === dialog) updateConfirmationDialog = null }
+        dialog.show()
+    }
+
     private fun installUpdate() {
         // No unknown-sources pre-check: some head units answer its settings page with "Not supported yet".
         // The chosen installer asks for that permission itself.
         installApk(updateFile ?: return)
     }
 
+    private fun refreshInstallState() {
+        val state = SessionInstallState.read(this) ?: return
+        if (state == observedInstallState) return
+        observedInstallState = state
+        updateInstallInProgress = state.pending
+        if (!state.pending) {
+            updateStage = if (state.status == android.content.pm.PackageInstaller.STATUS_SUCCESS) UpdateStage.IDLE else UpdateStage.FAILED
+            updateMessage = getString(if (state.status == android.content.pm.PackageInstaller.STATUS_SUCCESS)
+                R.string.update_up_to_date else R.string.update_failed)
+        }
+        render()
+    }
+
     private fun installApk(file: File) {
-        if (updateInstallInProgress) return
+        if (updateInstallInProgress || SessionInstallState.read(this)?.pending == true) return
+        observedInstallState = SessionInstallState.read(this)
         updateInstallInProgress = true
+        updateMessage = null
+        render()
         // The public copy lets file managers such as MT Manager open the APK. The private provider URI is the fallback,
         // including when the driver deleted the public copy.
         // The public copy is outside the app's control, so it must still match the verified file. Hashing two
@@ -2758,12 +2827,33 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         val savedUri = updateSavedUri
         val generation = updateGeneration
         updateInstallWorker(Runnable {
-            val installed = runCatching { silentUpdateInstaller(file) }.getOrDefault(false)
-            val publicUri = if (installed) null else savedUri?.takeIf { sameContent(it, file) }
+            if (!file.isFile || file.length() == 0L) {
+                runOnUiThread {
+                    updateInstallInProgress = false
+                    if (generation == updateGeneration && !isFinishing && !isDestroyed) {
+                        updateStage = UpdateStage.FAILED
+                        updateMessage = getString(R.string.update_failed)
+                        render()
+                    }
+                }
+                return@Runnable
+            }
+            val needsSession = SessionUpdateInstaller.isSystemUid(updateInstallerUid())
+            val sessionSubmitted = needsSession && runCatching { sessionUpdateInstaller(file) }.getOrDefault(false)
+            val publicUri = if (needsSession) null else savedUri?.takeIf { sameContent(it, file) }
             runOnUiThread {
-                updateInstallInProgress = false
-                if (!installed && generation == updateGeneration && !isFinishing && !isDestroyed) {
-                    startInstaller(file, publicUri)
+                updateInstallInProgress = sessionSubmitted && SessionInstallState.read(this)?.pending != false
+                if (generation == updateGeneration && !isFinishing && !isDestroyed) {
+                    when {
+                        needsSession && !sessionSubmitted -> {
+                            // Never fall back to the denied system-UID FileProvider grant.
+                            updateStage = UpdateStage.FAILED
+                            updateMessage = getString(R.string.update_failed)
+                        }
+                        !needsSession -> startInstaller(file, publicUri)
+                    }
+                    if (sessionSubmitted) refreshInstallState()
+                    render()
                 }
             }
         })

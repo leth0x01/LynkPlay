@@ -773,6 +773,9 @@
     <string name="update_downloading">正在下載 · %1$d%%</string>
     <string name="update_verifying">正在驗證…</string>
     <string name="update_install">安裝 %1$s</string>
+    <string name="update_install_warning">安裝更新時，LynkPlay 會結束，CarPlay 連線將中斷。完成後請重新開啟應用程式。</string>
+    <string name="update_install_continue">繼續安裝</string>
+    <string name="update_installing">正在安裝更新…請確認系統提示。安裝時應用程式會結束。</string>
     <string name="update_failed">更新失敗</string>
     <string name="update_available_home">有可用更新</string>
     <string name="update_saved_to">已儲存至 %1$s</string>

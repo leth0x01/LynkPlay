@@ -721,6 +721,9 @@
     <string name="update_downloading">Завантаження · %1$d%%</string>
     <string name="update_verifying">Перевірка…</string>
     <string name="update_install">Установити %1$s</string>
+    <string name="update_install_warning">Під час установлення LynkPlay закриється, а з’єднання CarPlay перерветься. Після завершення оновлення відкрийте застосунок знову.</string>
+    <string name="update_install_continue">Продовжити встановлення</string>
+    <string name="update_installing">Установлення оновлення… Підтвердьте системний запит. Під час установлення застосунок закриється.</string>
     <string name="update_failed">Не вдалося оновити</string>
     <string name="update_available_home">Доступне оновлення</string>
     <string name="update_saved_to">Збережено в %1$s</string>

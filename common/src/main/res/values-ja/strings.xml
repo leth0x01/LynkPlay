@@ -874,6 +874,9 @@
     <string name="update_downloading">ダウンロード中 · %1$d%%</string>
     <string name="update_verifying">検証しています…</string>
     <string name="update_install">%1$sをインストール</string>
+    <string name="update_install_warning">更新のインストール中は LynkPlay が終了し、CarPlay の接続が切断されます。更新完了後にアプリを開き直してください。</string>
+    <string name="update_install_continue">インストールを続行</string>
+    <string name="update_installing">更新をインストール中…システムの確認画面で承認してください。インストール中はアプリが終了します。</string>
     <string name="update_failed">更新に失敗しました</string>
     <string name="update_available_home">更新が利用できます</string>
     <string name="update_saved_to">%1$sに保存しました</string>

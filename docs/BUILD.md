@@ -156,8 +156,8 @@ Development-only builds with runtime assets use `:mobile:assembleStandaloneDebug
 Prepare JDK 25, the Android SDK, the BX11 platform signing configuration and runtime authentication assets described below. Increment both values in `gradle.properties` before each update:
 
 ```properties
-lynkplayVersionCode=56
-lynkplayVersionName=0.2.5
+lynkplayVersionCode=57
+lynkplayVersionName=0.2.6
 ```
 
 Run from the repository root on macOS or Windows:
@@ -171,15 +171,15 @@ The script uses `.private/auth-assets` by default. Select another authentication
 It runs the complete Android CI task list from `AGENTS.md`, then `:mobile:lintRelease :mobile:assembleRelease`. It verifies the final APK's Android 9 signature, the pinned BX11 platform certificate, the `com.leth0x01.lynkplay` application ID, the `android.uid.system` declaration, version name/code and packaged authentication assets before generating:
 
 ```text
-mobile/build/outputs/publish/0.2.5/LynkPlay-0.2.5.apk
-mobile/build/outputs/publish/0.2.5/SHA256SUMS.txt
+mobile/build/outputs/publish/0.2.6/LynkPlay-0.2.6.apk
+mobile/build/outputs/publish/0.2.6/SHA256SUMS.txt
 ```
 
 The output directory and APK filename follow `lynkplayVersionName`. The release package uses the BX11 platform certificate and declares `android.uid.system`, so that the Dashboard CarPlay map works; keep the `com.leth0x01.lynkplay` application ID for updates.
 
 ### Publish an update
 
-Create a Release in `leth0x01/LynkPlay` with tag `v0.2.5` pointing to the source commit used for the build. Upload the versioned APK and `SHA256SUMS.txt` before publishing. Each Release must contain exactly one main-app APK. The checksum file must refer to the uploaded APK's exact filename.
+Create a Release in `leth0x01/LynkPlay` with tag `v0.2.6` pointing to the source commit used for the build. Upload the versioned APK and `SHA256SUMS.txt` before publishing. Each Release must contain exactly one main-app APK. The checksum file must refer to the uploaded APK's exact filename.
 
 The app reads this repository's GitHub Releases API, compares the tag's three-part version with the installed version, downloads both attachments and verifies SHA256 before opening an installer. The current updater also considers prereleases. Downloading and installation are initiated by the user; background checks are enabled by default and limited to once per 24 hours.
 

@@ -875,6 +875,9 @@
     <string name="update_downloading">Downloading · %1$d%%</string>
     <string name="update_verifying">Verifying…</string>
     <string name="update_install">Install %1$s</string>
+    <string name="update_install_warning">LynkPlay will close and the CarPlay connection will be interrupted during installation. Reopen the app after the update finishes.</string>
+    <string name="update_install_continue">Continue installation</string>
+    <string name="update_installing">Installing update… Confirm any system prompt. The app will close during installation.</string>
     <string name="update_failed">Update failed</string>
     <string name="update_available_home">Update available</string>
     <string name="update_saved_to">Saved to %1$s</string>

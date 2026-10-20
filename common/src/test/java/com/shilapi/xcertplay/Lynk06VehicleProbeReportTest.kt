@@ -120,7 +120,16 @@ class Lynk06VehicleProbeReportTest {
             val directory = File(root, "vehicle-probe").apply { mkdirs() }
             val outside = File(root, "outside").apply { writeText("keep") }
             val report = report()
-            Files.createSymbolicLink(File(directory, "${report.requestId}.json").toPath(), outside.toPath())
+            try {
+                Files.createSymbolicLink(File(directory, "${report.requestId}.json").toPath(), outside.toPath())
+            } catch (failure: java.nio.file.FileSystemException) {
+                // Windows hosts without Developer Mode/elevation cannot create the test fixture.
+                // Linux CI still exercises the symlink rejection assertion below.
+                if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) {
+                    org.junit.Assume.assumeNoException("Host cannot create symbolic links", failure)
+                }
+                throw failure
+            }
             assertThrows(Exception::class.java) { AtomicVehicleProbeReportSink(root).write(report) }
             assertEquals("keep", outside.readText())
         } finally { root.deleteRecursively() }
