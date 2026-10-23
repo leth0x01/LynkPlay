@@ -566,7 +566,7 @@
     <string name="settings_gesture_fingers_option">%1$d أصابع</string>
     <string name="settings_gesture_fingers_hint">اختر عددًا من الأصابع لا يستخدمه جهاز السيارة. تأخذ وحدة BYD السحب لأسفل بثلاثة أصابع للوحة التكييف.</string>
     <string name="auto_car_hotspot_title">تشغيل نقطة اتصال السيارة تلقائيًا</string>
-    <string name="auto_car_hotspot_description">يشغّل نقطة اتصال السيارة المحفوظة عند فتح LynkPlay. عند تفعيل المفتاح تُطلب الأذونات اللازمة تلقائيًا عبر ADB؛ وافق على شاشة السيارة. فعّل فتح LynkPlay بعد تشغيل السيارة للبدء عند الإقلاع. يبقى الاسم وكلمة المرور دون تغيير ولا تُطفأ نقطة الاتصال تلقائيًا.</string>
+    <string name="auto_car_hotspot_description">في وضع الاتصال اللاسلكي عبر نقطة اتصال السيارة، يشغّل النقطة المحفوظة عند فتح LynkPlay أو العودة إليه أو التبديل إلى هذا الوضع أو تفعيل هذا الخيار. عند تفعيل المفتاح تُطلب الأذونات اللازمة تلقائيًا عبر ADB؛ وافق على شاشة السيارة. فعّل فتح LynkPlay بعد تشغيل السيارة للبدء عند الإقلاع. يبقى الاسم وكلمة المرور دون تغيير ولا تُطفأ نقطة الاتصال تلقائيًا.</string>
     <string name="settings_car_hotspot_config_title">استيراد تفاصيل نقطة اتصال السيارة (تجريبي)</string>
     <string name="settings_car_hotspot_config_description">لا حاجة لإدخال تفاصيل نقطة الاتصال يدويًا: تُستورد تفاصيل السيارة أولًا. وإذا لم تكن في السيارة تفاصيل، فبعد تأكيدك تكتب LynkPlay تفاصيلها الخاصة هناك، وقد تحتاج الأجهزة التي تستخدم هذه النقطة إلى إعادة الاتصال. يحتاج ADB على أندرويد 11 وأحدث؛ وغير متاح على أندرويد 8 إلى 10.</string>
     <string name="settings_car_hotspot_config_unsupported">استيراد تفاصيل نقطة اتصال السيارة غير مدعوم في إصدار أندرويد هذا.</string>
@@ -936,7 +936,7 @@
     <string name="settings_navigation_attenuation_value">%1$d ديسيبل</string>
     <string name="settings_navigation_attenuation_description">يخفض صوت إرشادات ملاحة CarPlay فقط دون تغيير صوت الموسيقى أو المكالمات. يُطبَّق التغيير فورًا وتظل وحدة السيارة تتحكم بمستوى صوت الملاحة.</string>
     <string name="settings_car_hotspot_control">نقطة اتصال السيارة</string>
-    <string name="settings_auto_car_hotspot_system_description">يشغّل نقطة اتصال السيارة المحفوظة عند فتح LynkPlay وقبل الاتصال اللاسلكي. يحتاج LynkPlay إلى إذن Android «تعديل إعدادات النظام»؛ لا يلزم ADB. لتتوفر نقطة الاتصال بعد إعادة التشغيل الكاملة، فعّل أيضًا فتح LynkPlay بعد تشغيل السيارة. لا يتم إيقاف نقطة الاتصال تلقائيًا.</string>
+    <string name="settings_auto_car_hotspot_system_description">في وضع الاتصال اللاسلكي عبر نقطة اتصال السيارة، يشغّل النقطة المحفوظة عند فتح LynkPlay أو العودة إليه أو التبديل إلى هذا الوضع أو تفعيل هذا الخيار، وقبل الاتصال. يحتاج LynkPlay إلى إذن Android «تعديل إعدادات النظام»؛ لا يلزم ADB. لتتوفر نقطة الاتصال بعد إعادة التشغيل الكاملة، فعّل أيضًا فتح LynkPlay بعد تشغيل السيارة. لا يتم إيقاف نقطة الاتصال تلقائيًا.</string>
     <string name="settings_write_settings_granted">إذن «تعديل إعدادات النظام»: مسموح</string>
     <string name="settings_write_settings_missing">إذن «تعديل إعدادات النظام» غير مسموح بعد. اسمح به ليتمكن LynkPlay من تشغيل نقطة الاتصال.</string>
     <string name="settings_write_settings_allow">السماح بالإذن</string>

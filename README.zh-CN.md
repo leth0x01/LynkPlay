@@ -11,7 +11,8 @@
 ## 安装与构建
 
 - 主应用模块：`mobile`。
-- 安装标识：`com.leth0x01.lynkplay`，使用 BX11 平台签名并声明 `android.uid.system`；车测包与正式包是同一个包。2026-10-14 实车反馈，使用该包后仪表 CarPlay 地图可以显示。
+- 安装标识：`com.leth0x01.lynkplay`，使用 BX11 平台签名并声明 `android.uid.system`，维持既有授权体验和覆盖升级兼容性。
+- 2026-10-23 实车确认：在 BX11 / IHU514G、762 固件上，不使用系统 UID 也能显示仪表地图。系统 UID 影响权限处理，不是仪表地图的必需条件；本次验证仍保留平台签名。授权差异与证据见[验证记录](docs/LYNKPLAY-VALIDATION.md)。
 - Debug 安装标识：`com.leth0x01.lynkplay.hudtest`。
 - 可与 DiPlay 共存，私有数据与权限独立；原版设置不会自动迁移，可使用现有备份／恢复功能。
 - 保留上游内部 namespace、类型及资源键，方便后续合并更新。

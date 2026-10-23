@@ -273,7 +273,28 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private var updatingAdbSwitches = false
     private val adbSwitches = mutableMapOf<Int, Pair<Switch, () -> Boolean>>()
     private var hotspotStartupResult: CarHotspotTethering.Result? = null
-    @Volatile private var startupHotspotCancelled = false
+    // 保留本次显式无线选择，避免从授权页返回时又被上次 USB 连接记录覆盖。
+    private var explicitWirelessSelection = false
+    private val hotspotPreparation by lazy {
+        CarHotspotPreparation(
+            eligible = { wireless -> !isFinishing && !isDestroyed &&
+                CarHotspotSetup.shouldPrepare(applicationContext, wireless, CarPlayBackgroundSession.hasSession()) },
+            start = { cancelled ->
+                runCatching {
+                    CarHotspotTethering.enable(applicationContext, isCancelled = cancelled,
+                        log = { Log.i("DiPlay-Hotspot", it) })
+                }.getOrElse {
+                    Log.w("DiPlay-Hotspot", "车机热点自动开启失败", it)
+                    CarHotspotTethering.Result.FAILED
+                }
+            },
+            dispatch = { action -> handler.post { action() } },
+            onResult = { result ->
+                hotspotStartupResult = result
+                if (page == "home") render()
+            },
+        )
+    }
     @Volatile private var vehicleProbeGeneration = 0
     @Volatile private var vehicleValidationGeneration = 0
     private val vehicleOperationLock = Any()
@@ -407,6 +428,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             getString(R.string.setup_error_auth)
         }
         pendingCarHotspotSetup = savedInstanceState?.getBoolean("pending_car_hotspot") ?: false
+        explicitWirelessSelection = savedInstanceState?.getBoolean("explicit_wireless_selection") ?: false
         bydVehicleAdvancedExpanded = savedInstanceState?.getBoolean("byd_vehicle_advanced") ?: false
         settingsCategory = savedInstanceState?.getString("settings_category")
             ?.let { runCatching { SettingsCategory.valueOf(it) }.getOrNull() }
@@ -424,7 +446,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         if (consumeBluetoothAutoConnectIntent(intent)) {
             if (initialLaunch) {
                 initialLaunch = false
-                startCarHotspotOnLaunch()
+                prepareCarHotspot(wireless = true)
             }
             handler.post { connect(true) }
         }
@@ -438,6 +460,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent); setIntent(intent)
+        if (isLauncherIntent(intent)) explicitWirelessSelection = false
         connectionSettingsReturnCategory = null
         // CarPlay runs in its own task, so the launcher icon resumes this one. Settings opened from
         // CarPlay carry a "page" extra, which isLauncherIntent rejects.
@@ -451,7 +474,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         if (consumeBluetoothAutoConnectIntent(intent)) {
             if (initialLaunch) {
                 initialLaunch = false
-                startCarHotspotOnLaunch()
+                prepareCarHotspot(wireless = true)
             }
             handler.post { connect(true) }
         }
@@ -468,6 +491,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         outState.putString("settings_category", settingsCategory.name)
         connectionSettingsReturnCategory?.let { outState.putString("connection_settings_return_category", it.name) }
         outState.putBoolean("pending_car_hotspot", pendingCarHotspotSetup)
+        outState.putBoolean("explicit_wireless_selection", explicitWirelessSelection)
         outState.putBoolean("byd_vehicle_advanced", bydVehicleAdvancedExpanded)
         outState.putInt("setup_step", setupStep)
         outState.putBoolean("setup_from_settings", setupFromSettings)
@@ -517,7 +541,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     override fun onStop() {
         cancelUsbPermissionSetup()
         clusterSafeAreaDialog?.dismiss()
-        startupHotspotCancelled = true
+        hotspotPreparation.cancel()
         super.onStop()
         if (!isFinishing && !isChangingConfigurations) {
             CenterMapOverlay.scheduleShow()
@@ -543,12 +567,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         }, "diplay-update-reconcile").start()
         refreshInstallState()
         handler.removeCallbacks(tick); handler.post(tick)
-        // Back with the hotspot access now allowed: the start-up attempt that lacked it runs again.
-        if (hotspotStartupResult == CarHotspotTethering.Result.PERMISSION_REQUIRED && CarHotspotTethering.permitted(this)) {
-            hotspotStartupResult = null
-            startupHotspotCancelled = false
-            startCarHotspotOnLaunch()
-        }
+        // 首次打开、从车机设置/授权页面返回都检查，不能只依赖第一次启动。
+        prepareCarHotspot()
         // Back from the car settings: refresh the car hotspot reminder on the home page.
         if (!initialLaunch && !adbSwitchChangePending && !pausedForAdbSwitchChange &&
             (page == "home" || page == "settings" || page == "connection" || page == "setup")) render()
@@ -556,7 +576,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         pausedForAdbSwitchChange = false
         if (initialLaunch) {
             initialLaunch = false
-            startCarHotspotOnLaunch()
             if (setupError == null && !CarPlayBackgroundSession.hasSession() &&
                 DiPlayPreferences.autoConnect(this) && intent.getStringExtra("page") == null && page != "setup") {
                 handler.post { connect(DiPlayPreferences.autoConnectWireless(this)) }
@@ -1804,6 +1823,8 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
                 getString(R.string.default_connection_usb)
             ), connectionModes.indexOf(DiPlayPreferences.defaultConnectionMode(this)), reconnects = false) {
                 DiPlayPreferences.saveDefaultConnectionMode(this, connectionModes[it])
+                explicitWirelessSelection = false
+                prepareCarHotspot()
             }
             adbToggle(card, R.string.open_after_the_car_starts,
                 R.string.availability_depends_on_your_head_unit_s_startup_settings,
@@ -2910,8 +2931,9 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
             toggle(card, getString(R.string.auto_car_hotspot_title),
                 getString(R.string.settings_auto_car_hotspot_system_description), CarHotspotSettings.enabled(this)) { enabled ->
                 CarHotspotSettings.setEnabled(this, enabled)
-                if (!enabled) startupHotspotCancelled = true
+                if (!enabled) hotspotPreparation.cancel()
                 else if (!CarHotspotTethering.permitted(this)) openWriteSettingsAccess()
+                else prepareCarHotspot()
             }
             val permitted = CarHotspotTethering.permitted(this)
             card.addView(label(getString(if (permitted) R.string.settings_write_settings_granted
@@ -2989,7 +3011,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
                         }
                     }) {
                     CarHotspotSettings.setEnabled(this, it)
-                    if (!it) startupHotspotCancelled = true
+                    if (!it) hotspotPreparation.cancel() else prepareCarHotspot()
                 }
             }
             adbStatus = label(getString(if (access == LocalAdb.Access.READY)
@@ -3070,20 +3092,11 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private fun vehicleAdbWorkInProgress(): Boolean =
         adbCheckInProgress || vehicleProbeAuthorizationInProgress || vehicleProbeInProgress
 
-    private fun startCarHotspotOnLaunch() {
-        if (!startupHotspotEligible()) return
-        val app = applicationContext
-        Thread({
-            val result = CarHotspotTethering.enable(app,
-                isCancelled = { startupHotspotCancelled || !startupHotspotEligible() },
-                log = { Log.i("DiPlay-Hotspot", it) },
-            )
-            runOnUiThread {
-                if (isFinishing || isDestroyed || result == CarHotspotTethering.Result.CANCELLED) return@runOnUiThread
-                hotspotStartupResult = result
-                if (page == "home") render()
-            }
-        }, "diplay-hotspot-startup").start()
+    private fun prepareCarHotspot(wireless: Boolean = explicitWirelessSelection || DiPlayPreferences.autoConnectWireless(this)) {
+        if (!CarHotspotSetup.shouldPrepare(this, wireless, CarPlayBackgroundSession.hasSession())) {
+            hotspotStartupResult = null
+        }
+        hotspotPreparation.request(wireless)
     }
 
     private var carHotspotConfigStatus: Int? = null
@@ -3204,9 +3217,6 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
         return HotspotCredentials(ssid, passphrase,
             AirPlayPersistence.loadManualHotspotSecurity(this), AirPlayPersistence.loadManualHotspotBand(this))
     }
-
-    private fun startupHotspotEligible(): Boolean =
-        CarHotspotSetup.shouldStartOnLaunch(applicationContext, CarPlayBackgroundSession.hasSession())
 
     private fun hotspotResultText(result: CarHotspotTethering.Result): String = getString(when (result) {
         CarHotspotTethering.Result.READY -> R.string.hotspot_control_on
@@ -3654,7 +3664,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
                 })
             }
             val join = hotspotJoinControls ?: HotspotJoinControls(this,
-                { CarPlayBackgroundSession.hasSession() }, beforeAction = { startupHotspotCancelled = true },
+                { CarPlayBackgroundSession.hasSession() }, beforeAction = { hotspotPreparation.cancel() },
                 labelFactory = { label(it, 15, MUTED) }, buttonFactory = { title, click -> button(title, false, click) })
                 .also { hotspotJoinControls = it }
             parent.addView(join.build())
@@ -5373,8 +5383,12 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     }
 
     private fun applyWirelessLink(mode: WirelessHotspotMode) {
-        startupHotspotCancelled = true
+        hotspotPreparation.cancel()
         AirPlayPersistence.saveWirelessHotspotMode(this, mode)
+        explicitWirelessSelection = true
+        markReconnectNeeded()
+        // 明确选择无线子模式时，不用上次 USB 连接记录阻止热点准备。
+        prepareCarHotspot(wireless = true)
         render()
         toast(getString(R.string.saved_for_your_next_connection))
     }
@@ -5713,7 +5727,9 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     }
 
     private fun connect(wireless: Boolean) {
-        startupHotspotCancelled = true
+        // 连接控制器接管热点就绪检查，取消界面侧的预准备任务。
+        hotspotPreparation.cancel()
+        explicitWirelessSelection = false
         if (wireless && pendingCarHotspotSetup) { toast(getString(R.string.save_your_hotspot_details_in_connection_setup_first)); page = "connection"; render(); return }
         if (setupError != null) { toast(setupError!!); return }
         if (wireless && AirPlayPersistence.loadWirelessHotspotMode(this) == WirelessHotspotMode.MANUAL &&

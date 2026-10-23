@@ -593,7 +593,7 @@
     <string name="settings_gesture_fingers_option">%1$d 指</string>
     <string name="settings_gesture_fingers_hint">選擇車機尚未使用的手指數。比亞迪的三指向下滑動會開啟空調面板，建議改用 2 指。</string>
     <string name="auto_car_hotspot_title">自動開啟熱點</string>
-    <string name="auto_car_hotspot_description">LynkPlay 啟動時開啟車機熱點。開啟開關會自動透過 ADB 申請所需權限，請允許車機上的授權提示。配合“車輛啟動後開啟”可隨開機啟動。保留熱點名稱和密碼，不會自動關閉熱點。</string>
+    <string name="auto_car_hotspot_description">僅在無線車機熱點模式下，開啟或返回 LynkPlay、切換至此模式或啟用本開關時，自動開啟已儲存的車機熱點。開啟開關會自動透過 ADB 申請所需權限，請允許車機上的授權提示。配合“車輛啟動後開啟”可隨開機啟動。保留熱點名稱和密碼，不會自動關閉熱點。</string>
     <string name="settings_car_hotspot_config_title">匯入車機熱點詳情（實驗性）</string>
     <string name="settings_car_hotspot_config_description">無需手動輸入熱點資訊，嘗試匯入車機熱點資訊；車機沒有熱點資訊時，在使用者確認後由 LynkPlay 寫入自己的熱點詳情，使用此車載熱點的裝置可能需要重新連線。Android 11 及以上需要 ADB；Android 8 到 10 不支援。</string>
     <string name="settings_car_hotspot_config_unsupported">此 Android 版本不支援匯入車機熱點詳細資訊。</string>
@@ -947,7 +947,7 @@
     <string name="settings_navigation_attenuation_value">%1$d dB</string>
     <string name="settings_navigation_attenuation_description">只降低 CarPlay 導航提示音量，不影響音樂與通話。調整立即生效，仍可使用車機本身的導航音量。</string>
     <string name="settings_car_hotspot_control">車輛熱點</string>
-    <string name="settings_auto_car_hotspot_system_description">開啟 LynkPlay 時及無線連線前開啟已儲存的車輛熱點。LynkPlay 需要 Android 的「修改系統設定」權限；不需要 ADB。若要在完全重新啟動後也有熱點，請同時開啟「車輛啟動後開啟 LynkPlay」。熱點不會自動關閉。</string>
+    <string name="settings_auto_car_hotspot_system_description">僅在無線車機熱點模式下，開啟或返回 LynkPlay、切換至此模式、啟用本開關及連線前，自動開啟已儲存的車機熱點。LynkPlay 需要 Android 的「修改系統設定」權限；不需要 ADB。若要在完全重新啟動後也有熱點，請同時開啟「車輛啟動後開啟 LynkPlay」。熱點不會自動關閉。</string>
     <string name="settings_write_settings_granted">「修改系統設定」權限：已允許</string>
     <string name="settings_write_settings_missing">尚未允許「修改系統設定」權限。請允許，讓 LynkPlay 能開啟熱點。</string>
     <string name="settings_write_settings_allow">允許權限</string>

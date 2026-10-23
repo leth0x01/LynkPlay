@@ -1,5 +1,47 @@
 # LynkPlay 验证记录
 
+## 2026-10-23：非系统 UID 仪表地图与首次授权
+
+在 2023 款领克 06 燃油版（BX11 / IHU514G / xecarx / Android 9、762 固件）使用普通 UID，用户确认物理仪表可以显示 CarPlay 地图。证据为本地 `.private/diplay-report 11.txt` 和构建校验记录。
+
+### 验证条件
+
+- 应用版本为 `0.2.6-uidtest`（versionCode 57），安装标识为 `com.leth0x01.lynkplay.uidtest`；更换安装标识后，既有授权和应用私有数据不会继承。
+- 保留 BX11 平台签名、运行时认证素材、原有权限声明和 `lynkplay.clusterSystem=true` 元数据，移除 `android:sharedUserId`。
+- APK SHA-256：`da3171b531ea8fe808fd37fb18731c5b12d962c777fbada552cb2ec69eacf257`。
+- 报告 SHA-256：`11b841bdc0933e6f07d883b0665c151b473ef1f218a938d9441e116d4a973e0c`。
+- 构建时完整 Android CI、Release lint、平台证书及认证素材校验通过。报告版本和日志私有目录均对应上述安装标识；报告未直接列出安装后的 UID 数值。
+
+### 仪表链路与物理显示
+
+| 时间 | 记录 |
+| --- | --- |
+| 08:25:20 | AdaptAPI 已连接，菜单、导航和交互回调已注册 |
+| 08:26:36 | 投影声明开启成功、地图模式请求被接受；display 1 的 Surface 有效，`appMapReady=true` |
+| 08:26:37 | `未启用系统 UID 构建，跳过服务暂停`，本次没有执行原车导航服务暂停 |
+| 08:26:39 | 三指手势之后，原车投影门控允许，发送 `INFO_ID_MMI_NAVSYNCDISPLAY open` |
+| 08:26:46 | 仪表流 `stream=111 rx=17.0fps shown=17.0fps`，`recoveries=0`、`late=0` |
+| 08:26:48 | 结束导航卡片发送、窗口隐藏、Surface 释放和投影声明关闭成功 |
+
+报告累计收到 17 个路线帧，其中 16 个有效；发送完整导航卡片 3 次。报告生成时导航已经结束，`mapVisible=false`，各导航清理项均为 false，`lastError=none`。物理仪表显示成功来自用户观察，日志提供对应输出与 MCU 指令证据。
+
+**结论：本车 762 固件的仪表地图不必使用 `android.uid.system`。** 本轮仍使用平台签名，不能据此推断普通签名也可用。MCU open 与三指手势处于同一时间段，尚不能确认完全自动开启；本轮也未独立确认原车导航服务原始 enabled setting、结束后的原车导航恢复及长时间稳定性。
+
+### 首次授权体验
+
+用户反馈改用普通 UID 后出现麦克风、调试和 root 等授权申请，而此前使用系统 UID 时没有这些弹窗。日志可直接核实：
+
+- 08:25:21：麦克风权限授予；VPN 确认界面 `com.android.vpndialogs/.ConfirmDialog` 无法启动，抛出 `ActivityNotFoundException`。
+- 08:25:27：`VPN consent root=COMMAND_SUCCEEDED adb=null verified=true granted=true`。root 用于设置本应用的 `ACTIVATE_VPN` 并通过系统验证，不是仪表绘制的 root 调用。
+- 08:25:28 至 08:25:33：iPhone USB 重新枚举后请求设备访问权限，并收到授予结果。
+- 本次 VPN 后备结果为 `adb=null`，不能把用户反馈的调试弹窗记为该次 VPN ADB 后备已执行。更换安装标识后也不会继承既有本机 ADB 密钥。
+
+首次授权差异同时包含 UID 变化和更换安装标识两个因素，不能全部归因于系统 UID。连接初期有 4 次 Pairing 阶段失败，第 5 次建立 CarPlay 会话。用户确认原因是首次连接时 iPhone 尚未信任车机，完成信任后连接成功。
+
+### UID 使用策略
+
+当前继续使用 `android.uid.system`，维持既有授权体验及覆盖升级兼容性，而不是因为仪表地图必须使用系统 UID。共享 UID 属于应用身份的一部分，不能直接删除声明后按普通更新原位升级。
+
 ## 2026-10-19：CarPlay Ultra 协议可达性
 
 复核 iPhone 的 AirPlay `/info` 请求，三份独立采集（2026-10-16 两次、2026-10-19 一次）只声明三项仪表内容：

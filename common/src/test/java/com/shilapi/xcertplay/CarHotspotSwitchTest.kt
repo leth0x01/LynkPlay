@@ -12,6 +12,7 @@ import com.shilapi.xcertplay.hud.BydAdbAccess
 import com.shilapi.xcertplay.hud.BydOutputSettings
 import com.shilapi.xcertplay.hud.BydVehicleFieldStore
 import com.shilapi.xcertplay.network.CarHotspotSettings
+import com.shilapi.xcertplay.network.CarHotspotTethering
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -34,7 +35,8 @@ import org.robolectric.shadows.ShadowToast
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [29], qualifiers = "en", manifest = Config.NONE, shadows = [CarHotspotSwitchTest.Grant::class,
-    CarHotspotAdbGrantTest.WritePermission::class, CarHotspotSwitchTest.StatusCheck::class])
+    CarHotspotAdbGrantTest.WritePermission::class, CarHotspotSwitchTest.StatusCheck::class,
+    HomeHotspotAccessTest.HotspotState::class, HomeHotspotAccessTest.PlatformStart::class])
 class CarHotspotSwitchTest {
     private lateinit var activity: DiPlayActivity
     private lateinit var controls: LinearLayout
@@ -47,6 +49,8 @@ class CarHotspotSwitchTest {
         BydVehicleFieldStore.clearMemoryForTests()
         CarPlayBackgroundSession.clear()
         CarHotspotAdbGrantTest.WritePermission.allowed = false
+        HomeHotspotAccessTest.HotspotState.on = false
+        HomeHotspotAccessTest.PlatformStart.calls.set(0)
         ShadowSettings.setCanDrawOverlays(false)
         Grant.entered = CountDownLatch(1)
         Grant.release = CountDownLatch(1)
@@ -92,6 +96,27 @@ class CarHotspotSwitchTest {
         assertEquals(listOf(CarHotspotSetup.Permission.HOTSPOT), Grant.requested)
         assertFalse(CarHotspotSetup.Permission.BOOT_LAUNCH.granted(activity))
         assertFalse(AirPlayPersistence.loadAutoStartOnBoot(activity))
+    }
+
+    @Test fun successfulGrantImmediatelyPreparesTheConfiguredHotspot() {
+        AirPlayPersistence.saveWirelessEnabled(activity, true)
+        AirPlayPersistence.saveManualHotspotSsid(activity, "Car hotspot")
+        AirPlayPersistence.saveManualHotspotPassphrase(activity, "12345678")
+        hotspotSwitch().isChecked = true
+        awaitGrant(); completeGrant()
+        repeat(150) {
+            shadowOf(Looper.getMainLooper()).idle()
+            val result = DiPlayActivity::class.java.getDeclaredField("hotspotStartupResult").apply {
+                isAccessible = true
+            }.get(activity)
+            if (result == CarHotspotTethering.Result.READY) {
+                assertTrue(HomeHotspotAccessTest.HotspotState.on)
+                assertEquals(1, HomeHotspotAccessTest.PlatformStart.calls.get())
+                return
+            }
+            Thread.sleep(20)
+        }
+        fail("授权后未自动开启车机热点")
     }
 
     @Test fun adbApprovalFailureLeavesTheSwitchOffAndShowsTheReason() {

@@ -24,6 +24,7 @@ class CarHotspotSetupTest {
     @Before fun reset() {
         context.getSharedPreferences("diplay_car_hotspot", 0).edit().clear().commit()
         context.getSharedPreferences("xcertplay_airplay", 0).edit().clear().commit()
+        context.getSharedPreferences("diplay", 0).edit().clear().commit()
     }
 
     @Test fun freshInstallAndExistingHotspotConfigurationRemainOptedOut() {
@@ -112,6 +113,30 @@ class CarHotspotSetupTest {
         assertEquals("Car hotspot", AirPlayPersistence.loadManualHotspotSsid(context))
         assertEquals("12345678", AirPlayPersistence.loadManualHotspotPassphrase(context))
         assertEquals(WirelessHotspotMode.MANUAL, AirPlayPersistence.loadWirelessHotspotMode(context))
+    }
+
+    @Test fun fixedUsbDefaultDoesNotPrepareTheLastUsedWirelessHotspot() {
+        configureHotspot()
+        CarHotspotSettings.setEnabled(context, true)
+        DiPlayPreferences.saveDefaultConnectionMode(context, DefaultConnectionMode.USB)
+        assertFalse(eligible())
+    }
+
+    @Test fun fixedWirelessDefaultPreparesHotspotAfterTheLastUsbConnection() {
+        configureHotspot()
+        CarHotspotSettings.setEnabled(context, true)
+        AirPlayPersistence.saveWirelessEnabled(context, false)
+        DiPlayPreferences.saveDefaultConnectionMode(context, DefaultConnectionMode.WIRELESS)
+        assertTrue(eligible())
+    }
+
+    @Test fun explicitWirelessSelectionCanPrepareHotspotAfterUsbWithoutChangingTheLastTransport() {
+        configureHotspot()
+        CarHotspotSettings.setEnabled(context, true)
+        AirPlayPersistence.saveWirelessEnabled(context, false)
+        assertTrue(CarHotspotSetup.shouldPrepare(context, wireless = true, hasSession = false))
+        assertFalse(AirPlayPersistence.loadWirelessEnabled(context))
+        assertFalse(CarHotspotSetup.shouldPrepare(context, wireless = true, hasSession = true))
     }
 
     private fun eligible() = CarHotspotSetup.shouldStartOnLaunch(context, hasSession = false)

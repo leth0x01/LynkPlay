@@ -647,7 +647,7 @@
     <string name="settings_gesture_fingers_option">%1$d本指</string>
     <string name="settings_gesture_fingers_hint">車載端末がほかの操作に使わない指の本数を選んでください。BYDでは3本指の下スワイプでエアコンパネルが開きます。</string>
     <string name="auto_car_hotspot_title">車載ホットスポットを自動でオン</string>
-    <string name="auto_car_hotspot_description">LynkPlayの起動時に保存済みの車載ホットスポットを開始します。有効にするとADB経由で必要な権限を自動要求するため、車載画面の確認を許可してください。車両の起動と同時に開始するには「車の起動後に開く」を有効にしてください。ホットスポット名とパスワードは維持され、ホットスポットを自動でオフにすることはありません。</string>
+    <string name="auto_car_hotspot_description">ワイヤレスの車載ホットスポットモードで、LynkPlayを開く・戻る、このモードに切り替える、またはこの設定を有効にすると、保存済みの車載ホットスポットを開始します。有効にするとADB経由で必要な権限を自動要求するため、車載画面の確認を許可してください。車両の起動と同時に開始するには「車の起動後に開く」を有効にしてください。ホットスポット名とパスワードは維持され、ホットスポットを自動でオフにすることはありません。</string>
     <string name="settings_car_hotspot_config_title">車のホットスポット情報を取り込み（実験的機能）</string>
     <string name="settings_car_hotspot_config_description">ホットスポット情報を手入力する必要はありません。車のホットスポット情報を取り込みます。車に情報がない場合は、確認のうえで LynkPlay の情報が書き込まれ、このホットスポットを使用しているデバイスは再接続が必要になることがあります。Android 11 以降ではADBが必要で、Android 8〜10では利用できません。</string>
     <string name="settings_car_hotspot_config_unsupported">この Android バージョンでは車のホットスポット情報のインポートに対応していません。</string>
@@ -989,7 +989,7 @@
     <string name="settings_navigation_attenuation_value">%1$d dB</string>
     <string name="settings_navigation_attenuation_description">CarPlayのナビ案内だけ音量を下げます。音楽や通話の音量は変わりません。変更はすぐに反映され、車載端末側のナビ音量も引き続き使用できます。</string>
     <string name="settings_car_hotspot_control">車のホットスポット</string>
-    <string name="settings_auto_car_hotspot_system_description">LynkPlay を開いたときとワイヤレス接続の前に、保存済みの車のホットスポットをオンにします。Android の「システム設定の変更」へのアクセスが必要です。ADB は不要です。完全に再起動した後もホットスポットを使うには、車の起動後に LynkPlay を開く設定もオンにしてください。ホットスポットは自動ではオフになりません。</string>
+    <string name="settings_auto_car_hotspot_system_description">ワイヤレスの車載ホットスポットモードで、LynkPlayを開く・戻る、このモードに切り替える、この設定を有効にするとき、および接続前に、保存済みの車載ホットスポットをオンにします。Android の「システム設定の変更」へのアクセスが必要です。ADB は不要です。完全に再起動した後もホットスポットを使うには、車の起動後に LynkPlay を開く設定もオンにしてください。ホットスポットは自動ではオフになりません。</string>
     <string name="settings_write_settings_granted">「システム設定の変更」へのアクセス: 許可済み</string>
     <string name="settings_write_settings_missing">「システム設定の変更」へのアクセスがまだ許可されていません。LynkPlay がホットスポットをオンにできるよう許可してください。</string>
     <string name="settings_write_settings_allow">アクセスを許可</string>

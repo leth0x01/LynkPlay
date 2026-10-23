@@ -610,7 +610,7 @@
     <string name="settings_gesture_fingers_option">%1$d 指</string>
     <string name="settings_gesture_fingers_hint">选择车机没有占用的手指数。比亚迪的三指下滑是空调面板，建议改用 2 指。</string>
     <string name="auto_car_hotspot_title">自动开启热点</string>
-    <string name="auto_car_hotspot_description">LynkPlay 启动时开启车机热点。打开开关会自动通过 ADB 申请所需权限，请允许车机上的授权提示。配合“车辆启动后打开”可随开机启动。保留热点名称和密码，不会自动关闭热点。</string>
+    <string name="auto_car_hotspot_description">仅在无线车机热点模式下，打开或返回 LynkPlay、切换到此模式或开启本开关时，自动开启已保存的车机热点。打开开关会自动通过 ADB 申请所需权限，请允许车机上的授权提示。配合“车辆启动后打开”可随开机启动。保留热点名称和密码，不会自动关闭热点。</string>
     <string name="settings_car_hotspot_config_title">导入车机热点详情（实验性）</string>
     <string name="settings_car_hotspot_config_description">无需手动输入热点信息，尝试导入车机热点信息；车机没有热点信息时，在用户确认后由 LynkPlay 写入自己的热点详情，使用此车载热点的设备可能需要重连。Android 11 及以上需要 ADB；Android 8 到 10 不支持。</string>
     <string name="settings_car_hotspot_config_unsupported">此 Android 版本不支持导入车机热点详情。</string>
@@ -947,7 +947,7 @@
     <string name="settings_navigation_attenuation_value">%1$d dB</string>
     <string name="settings_navigation_attenuation_description">仅降低 CarPlay 导航播报音量，不影响音乐和通话。调整立即生效，车机自身的导航音量仍可使用。</string>
     <string name="settings_car_hotspot_control">车辆热点</string>
-    <string name="settings_auto_car_hotspot_system_description">打开 LynkPlay 时及无线连接前开启已保存的车辆热点。LynkPlay 需要 Android 的“修改系统设置”权限；无需 ADB。若要在完全重启后也有热点，请同时开启“车辆启动后打开 LynkPlay”。热点不会自动关闭。</string>
+    <string name="settings_auto_car_hotspot_system_description">仅在无线车机热点模式下，打开或返回 LynkPlay、切换到此模式、开启本开关及连接前，自动开启已保存的车机热点。LynkPlay 需要 Android 的“修改系统设置”权限；无需 ADB。若要在完全重启后也有热点，请同时开启“车辆启动后打开 LynkPlay”。热点不会自动关闭。</string>
     <string name="settings_write_settings_granted">“修改系统设置”权限：已允许</string>
     <string name="settings_write_settings_missing">尚未允许“修改系统设置”权限。请允许，以便 LynkPlay 开启热点。</string>
     <string name="settings_write_settings_allow">允许权限</string>

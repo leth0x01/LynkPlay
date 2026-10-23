@@ -1,7 +1,7 @@
 # Build LynkPlay
 
-For the stable Lynk 06 car-test package, platform signing, authentication provenance and vehicle steps, see [LynkPlay car-test builds](LYNKPLAY-CAR-TEST.md).
-The car-test package is platform-signed and declares a system UID; the Dashboard CarPlay map needs that UID.
+For platform signing, authentication provenance and vehicle steps, see the [vehicle guide](LYNKPLAY-CAR-TEST.md).
+LynkPlay uses the BX11 platform signature and `android.uid.system` to preserve the existing permission experience and upgrade compatibility. Vehicle validation on 2026-10-23 confirmed that the Dashboard CarPlay map also works without the system UID on BX11 / IHU514G firmware 762. The system UID affects permission handling, rather than being a prerequisite for the map. This validation retained platform signing. See the [validation record](LYNKPLAY-VALIDATION.md).
 
 Use this procedure to build the DiPlay app for an Android head unit.
 Run the commands from the repository root, where `gradlew` and `settings.gradle.kts` are located.
@@ -175,7 +175,7 @@ mobile/build/outputs/publish/0.2.6/LynkPlay-0.2.6.apk
 mobile/build/outputs/publish/0.2.6/SHA256SUMS.txt
 ```
 
-The output directory and APK filename follow `lynkplayVersionName`. The release package uses the BX11 platform certificate and declares `android.uid.system`, so that the Dashboard CarPlay map works; keep the `com.leth0x01.lynkplay` application ID for updates.
+The output directory and APK filename follow `lynkplayVersionName`. Keep the BX11 platform certificate, `android.uid.system` declaration and `com.leth0x01.lynkplay` application ID for updates. Removing the shared UID changes the app's identity and requires a migration plan, not an ordinary in-place update.
 
 ### Publish an update
 
@@ -199,7 +199,7 @@ Set these environment variables locally:
 | `LYNKPLAY_PLATFORM_KEY_PASSWORD` | Platform key password |
 
 Alternatively, keep the ignored root `keystore.properties` created by `java scripts/PrepareBx11PlatformSigning.java`; the keystore itself lives in the ignored `keystore/` directory, following the standard Android layout. Environment variables take precedence over local properties.
-`release` uses the BX11 platform certificate and declares `android.uid.system`, so that the Dashboard CarPlay map works.
+`release` uses the BX11 platform certificate and declares `android.uid.system` to preserve the existing permission experience and upgrade compatibility. The Dashboard map itself does not require the system UID on the verified firmware.
 
 Keep the keystore and passwords outside Git.
 Run the release checks and build:
@@ -227,6 +227,6 @@ The retired `build-beta.py` helper is no longer part of the build procedure.
 | A required SDK or NDK package is absent | Install the listed package with SDK Manager. |
 | Java or Gradle JDK version is incorrect | Set the terminal JDK and Android Studio Gradle JDK to Java 25. |
 | Source APK cannot start standalone CarPlay | Supply runtime authentication assets. Use the car-test procedure above or `:mobile:assembleStandaloneDebug`. |
-| Car-test APK has no Dashboard map | Build with `:mobile:assembleRelease`; the map needs the platform-signed system UID. |
+| Car-test APK has no Dashboard map | Check vehicle matching, the cluster-map setting, real iPhone navigation, AdaptAPI, Presentation/Surface output and OEM projection gates. Observe the physical cluster; the system UID alone does not determine visibility. |
 | Standalone task reports missing authentication files | Check the external directory path and both required files. |
 | Android rejects an app update | Use the same application ID and signing key as the installed app. |

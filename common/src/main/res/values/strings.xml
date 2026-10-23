@@ -649,7 +649,7 @@
     <string name="settings_gesture_fingers_option">%1$d fingers</string>
     <string name="settings_gesture_fingers_hint">Pick a finger count your head unit does not already use. BYD takes three-finger swipe-down for its air-conditioning panel.</string>
     <string name="auto_car_hotspot_title">Automatically turn on the car hotspot</string>
-    <string name="auto_car_hotspot_description">Starts the saved car hotspot when LynkPlay opens. Turning this on automatically requests the required permissions through ADB; allow the prompt on the car screen. Enable “Open after the car starts” for boot startup. Keeps the hotspot name and password and never turns it off.</string>
+    <string name="auto_car_hotspot_description">In wireless car hotspot mode, starts the saved hotspot when you open or return to LynkPlay, switch to this mode, or enable this option. Turning this on automatically requests the required permissions through ADB; allow the prompt on the car screen. Enable “Open after the car starts” for boot startup. Keeps the hotspot name and password and never turns it off.</string>
     <string name="settings_car_hotspot_config_title">Import the car hotspot details (experimental)</string>
     <string name="settings_car_hotspot_config_description">Nothing to type: the car hotspot settings are imported; when the car has none, LynkPlay writes its own details there after your confirmation, and devices using this hotspot may have to reconnect. Needs ADB on Android 11 and newer; not available on Android 8 to 10.</string>
     <string name="settings_car_hotspot_config_unsupported">Importing the car hotspot details is not supported on this Android version.</string>
@@ -990,7 +990,7 @@
     <string name="settings_navigation_attenuation_value">%1$d dB</string>
     <string name="settings_navigation_attenuation_description">Reduce CarPlay navigation guidance without changing music or call volume. Applies immediately; your head unit’s navigation volume still works.</string>
     <string name="settings_car_hotspot_control">Car hotspot</string>
-    <string name="settings_auto_car_hotspot_system_description">Turns on the saved car hotspot when LynkPlay opens and before a wireless connection. LynkPlay needs Android\'s “Modify system settings” access; ADB is not required. To have the hotspot after a full restart, also turn on opening LynkPlay after the car starts. The hotspot is not turned off automatically.</string>
+    <string name="settings_auto_car_hotspot_system_description">In wireless car hotspot mode, turns on the saved hotspot when you open or return to LynkPlay, switch to this mode, enable this option, and before connecting. LynkPlay needs Android\'s “Modify system settings” access; ADB is not required. To have the hotspot after a full restart, also turn on opening LynkPlay after the car starts. The hotspot is not turned off automatically.</string>
     <string name="settings_write_settings_granted">“Modify system settings” access: allowed</string>
     <string name="settings_write_settings_missing">“Modify system settings” access is not allowed yet. Allow it so LynkPlay can turn on the hotspot.</string>
     <string name="settings_write_settings_allow">Allow access</string>

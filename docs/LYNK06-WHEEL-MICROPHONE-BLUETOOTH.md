@@ -1,6 +1,6 @@
 # 领克 06 方控、麦克风与蓝牙适配
 
-当前状态更新：2026-10-17。目标车为 2023 款领克 06 燃油版，IHU514G / BX11 / xecarx / Android 9。固件专属行为只在 product、device、model、hardware 和 API 28 完整匹配时启用。
+当前状态更新：2026-10-20。目标车为 2023 款领克 06 燃油版，IHU514G / BX11 / xecarx / Android 9。固件专属行为只在 product、device、model、hardware 和 API 28 完整匹配时启用。
 
 ## 实车结论
 
@@ -75,6 +75,14 @@ ecarx.intent.action.ECARX_KEY_RVOICEASSIST_EVENT
 每次切换前释放失败的 AudioRecord，不修改全车 AudioManager 模式。诊断记录创建、初始化、启动失败阶段和最终使用的录音源，并包含 `peakDbfs`、采集字节与 UDP 发送统计。
 
 早期专项采集只证明 `VOICE_COMMUNICATION` 录音曾启动，不能证明音量、清晰度、回声或 Siri 识别质量。
+
+### E02 麦克风仲裁契约（2026-10-20 静态复核）
+
+从本车采集的 `boot-ecarx.gkui.openapi.impl.vdex` 还原出 `com.ecarx.sdk.policy.PolicyAPI`、`IAudioPolicy.requestMic/releaseMic` 和资源回调。E02 必须先调用 `init(Context, Callback)` 并等待 `policy` 服务连接，再取得音频接口；仅调用 `get(Context)` 不会建立连接，非空的音频 wrapper 也不代表远端可用。
+
+E02 没有参考项目用于判断是否申请的 `isNeedrequestMic()`；照搬该判断会直接跳过仲裁。参考实现还只在 `telephony` 路径申请，不能作为 Siri `speechrecognition` 已接通的依据。
+
+本轮只完成静态契约复核，未申请麦克风资源。下一步先验证应用进程内服务连接、申请/释放和实际声音，再决定是否接入录音路径。源码差异、固件哈希与接入条件见[DiPlay-ECARX 参考实现与 E02 契约对照](LYNK06-ECARX-REFERENCE-REVIEW.md)。
 
 ## 自动化覆盖
 
