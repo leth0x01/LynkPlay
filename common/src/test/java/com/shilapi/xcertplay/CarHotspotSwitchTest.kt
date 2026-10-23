@@ -32,6 +32,7 @@ import org.robolectric.annotation.Implements
 import org.robolectric.shadows.ShadowAlertDialog
 import org.robolectric.shadows.ShadowSettings
 import org.robolectric.shadows.ShadowToast
+import org.robolectric.util.ReflectionHelpers
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [29], qualifiers = "en", manifest = Config.NONE, shadows = [CarHotspotSwitchTest.Grant::class,
@@ -102,21 +103,47 @@ class CarHotspotSwitchTest {
         AirPlayPersistence.saveWirelessEnabled(activity, true)
         AirPlayPersistence.saveManualHotspotSsid(activity, "Car hotspot")
         AirPlayPersistence.saveManualHotspotPassphrase(activity, "12345678")
-        hotspotSwitch().isChecked = true
-        awaitGrant(); completeGrant()
-        repeat(150) {
-            shadowOf(Looper.getMainLooper()).idle()
-            val result = DiPlayActivity::class.java.getDeclaredField("hotspotStartupResult").apply {
-                isAccessible = true
-            }.get(activity)
-            if (result == CarHotspotTethering.Result.READY) {
-                assertTrue(HomeHotspotAccessTest.HotspotState.on)
-                assertEquals(1, HomeHotspotAccessTest.PlatformStart.calls.get())
-                return
-            }
-            Thread.sleep(20)
+        lifecycle("onStart")
+        try {
+            hotspotSwitch().isChecked = true
+            awaitGrant(); completeGrant()
+            awaitHotspotReady()
+        } finally {
+            lifecycle("onStop")
         }
-        fail("授权后未自动开启车机热点")
+    }
+
+    @Test fun grantCompletedAfterStopSavesTheChoiceButDefersHotspotUntilResume() {
+        AirPlayPersistence.saveWirelessEnabled(activity, true)
+        AirPlayPersistence.saveManualHotspotSsid(activity, "Car hotspot")
+        AirPlayPersistence.saveManualHotspotPassphrase(activity, "12345678")
+        prepareResume()
+        lifecycle("onStart")
+        lifecycle("onResume")
+        hotspotSwitch().isChecked = true
+        awaitGrant()
+
+        lifecycle("onPause")
+        lifecycle("onStop")
+        completeGrant()
+
+        assertTrue(CarHotspotSettings.enabled(activity))
+        assertTrue(CarHotspotSetup.Permission.HOTSPOT.granted(activity))
+        val preparation = ReflectionHelpers.callInstanceMethod<CarHotspotPreparation>(activity, "getHotspotPreparation")
+        // request() 同步建立任务标识，连同平台调用计数一起检查，避免用等待时长证明没有后台任务。
+        assertNull("Activity 已 stop，不应重新创建热点准备任务",
+            ReflectionHelpers.getField<Any?>(preparation, "activeRequest"))
+        assertEquals(0, HomeHotspotAccessTest.PlatformStart.calls.get())
+        assertFalse(HomeHotspotAccessTest.HotspotState.on)
+
+        lifecycle("onStart")
+        lifecycle("onResume")
+        try {
+            awaitHotspotReady()
+        } finally {
+            lifecycle("onPause")
+            lifecycle("onStop")
+        }
     }
 
     @Test fun adbApprovalFailureLeavesTheSwitchOffAndShowsTheReason() {
@@ -285,6 +312,20 @@ class CarHotspotSwitchTest {
             return BydAdbAccess.Status(BydAdbAccess.State.READY, batteryPercent = 74.0, rangeKm = 48)
         }
         companion object { val workers = CopyOnWriteArrayList<Thread>() }
+    }
+
+    private fun awaitHotspotReady() {
+        repeat(150) {
+            shadowOf(Looper.getMainLooper()).idle()
+            if (ReflectionHelpers.getField<CarHotspotTethering.Result?>(activity, "hotspotStartupResult") ==
+                CarHotspotTethering.Result.READY) {
+                assertEquals(1, HomeHotspotAccessTest.PlatformStart.calls.get())
+                assertTrue(HomeHotspotAccessTest.HotspotState.on)
+                return
+            }
+            Thread.sleep(20)
+        }
+        fail("前台授权成功后未自动开启车机热点")
     }
 
     private fun awaitGrant() { assertTrue(Grant.entered.await(3, TimeUnit.SECONDS)) }

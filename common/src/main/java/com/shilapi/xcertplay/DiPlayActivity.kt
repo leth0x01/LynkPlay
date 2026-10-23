@@ -275,9 +275,11 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     private var hotspotStartupResult: CarHotspotTethering.Result? = null
     // 保留本次显式无线选择，避免从授权页返回时又被上次 USB 连接记录覆盖。
     private var explicitWirelessSelection = false
+    // 资格检查也在热点工作线程执行；停止后异步授权回调不能重新发起预准备。
+    @Volatile private var hotspotPreparationStarted = false
     private val hotspotPreparation by lazy {
         CarHotspotPreparation(
-            eligible = { wireless -> !isFinishing && !isDestroyed &&
+            eligible = { wireless -> hotspotPreparationStarted && !isFinishing && !isDestroyed &&
                 CarHotspotSetup.shouldPrepare(applicationContext, wireless, CarPlayBackgroundSession.hasSession()) },
             start = { cancelled ->
                 runCatching {
@@ -531,6 +533,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
 
     override fun onStart() {
         super.onStart()
+        hotspotPreparationStarted = true
         // Results from the image picker and crop screens arrive before onResume.
         enforceInterfaceSize()
         CenterMapOverlay.onDiPlayScreenShown()
@@ -539,6 +542,7 @@ class DiPlayActivity : ComponentActivity(), AppAppearanceOwner {
     }
 
     override fun onStop() {
+        hotspotPreparationStarted = false
         cancelUsbPermissionSetup()
         clusterSafeAreaDialog?.dismiss()
         hotspotPreparation.cancel()
